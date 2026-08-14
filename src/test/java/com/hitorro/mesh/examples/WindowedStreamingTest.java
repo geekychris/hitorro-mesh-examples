@@ -159,6 +159,64 @@ class WindowedStreamingTest {
         }
     }
 
+    @Test
+    void watermarkHeartbeats_unblockWindowClosureForSparseEmitter() throws Exception {
+        // Phase 6d.2.1: WATERMARK heartbeats let a partition close windows
+        // WITHOUT emitting rows for them. Here p2 has events only in a
+        // far-future window — it never emits for window 0. Without
+        // heartbeats, driver would stall on window 0 (min-latest stuck at
+        // MIN_VALUE for p2). With heartbeats, p2's watermark = 500_000
+        // → latest-closed = 420_000, so window 0 (whose p1 contribution
+        // is buffered) closes before EOS.
+        try (var c = new MultiPartitionCluster()) {
+            try (var h = c.driver().dispatcher().submit(
+                    "SELECT WIN_START(event_time, " + WINDOW_MS + ") AS ws, "
+                    + "       COUNT(*) AS n "
+                    + "FROM events "
+                    + "GROUP BY WIN_START(event_time, " + WINDOW_MS + ")")) {
+
+                Thread.sleep(150);
+
+                // p1 has events in window 0, plus one far-future event that
+                // advances its watermark past window 0's boundary → jvssql
+                // emits row for window 0 (count=2).
+                c.p1().pushRow(event(0L, "eng"));
+                c.p1().pushRow(event(30_000L, "eng"));
+                c.p1().pushRow(event(500_000L, "eng"));
+
+                // p2 has ONLY a far-future event — no data in window 0. jvssql
+                // won't emit a row for window 0 on p2. Watermark = 500_000
+                // means p2 has closed windows through 420_000. That's what the
+                // WATERMARK heartbeat conveys.
+                c.p2().pushRow(event(500_000L, "eng"));
+
+                // Wait for the heartbeat to fire (200ms interval) and window 0
+                // to emit. Give it a generous timeout — this proves the
+                // emission happens BEFORE we stop the streams.
+                JsonNode w0 = h.nextRow(3, TimeUnit.SECONDS);
+                assertThat(w0).as("window 0 should close via p2's watermark heartbeat, "
+                        + "even though p2 has no events in window 0").isNotNull();
+                assertThat(w0.get("g0").asLong()).isEqualTo(0L);
+                assertThat(w0.get("c0").asLong()).as("only p1's 2 events, p2 contributed 0").isEqualTo(2L);
+
+                c.p1().stop();
+                c.p2().stop();
+
+                // Drain: window 480_000 has 1 row from each partition (event
+                // at 500_000). Watermark on both = 500_000 < 540_000, so
+                // jvssql doesn't emit for window 480_000 during live streaming.
+                // EOS triggers drain-all, jvssql flushes remaining windows.
+                // Both partitions contribute 1 row for window 480_000 → combined 2.
+                JsonNode w480 = h.nextRow(3, TimeUnit.SECONDS);
+                assertThat(w480).isNotNull();
+                assertThat(w480.get("g0").asLong()).isEqualTo(480_000L);
+                assertThat(w480.get("c0").asLong()).isEqualTo(2L);
+
+                assertThat(h.nextRow(2, TimeUnit.SECONDS)).isNull();
+            }
+        }
+    }
+
     // -- helpers -------------------------------------------------------------
 
     private static JVS event(long eventTime, String dept) throws Exception {
