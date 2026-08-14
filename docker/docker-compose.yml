@@ -57,6 +57,11 @@ services:
       - ./config/agent-us.yml:/config/agent.yml:ro
       - ./types:/data/types:ro
       - ./data:/data/data:ro
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "-", "http://localhost:8091/actuator/health"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
 
   agent-eu:
     build:
@@ -70,6 +75,11 @@ services:
       - ./config/agent-eu.yml:/config/agent.yml:ro
       - ./types:/data/types:ro
       - ./data:/data/data:ro
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "-", "http://localhost:8091/actuator/health"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
 
   agent-apac:
     build:
@@ -83,3 +93,8 @@ services:
       - ./config/agent-apac.yml:/config/agent.yml:ro
       - ./types:/data/types:ro
       - ./data:/data/data:ro
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "-", "http://localhost:8091/actuator/health"]
+      interval: 5s
+      timeout: 3s
+      retries: 10

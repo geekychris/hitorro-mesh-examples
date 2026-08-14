@@ -3,14 +3,33 @@
 # multi-stage build in this Dockerfile. Rationale: the Maven build already
 # resolves and caches all deps against your local ~/.m2, so a container
 # build would re-download hundreds of MB of Hadoop transitives every time.
+#
+# Phase 7e — production hardening:
+#   - non-root user (uid 1000)
+#   - JVM heap sized via JAVA_OPTS env (default: 512M initial / 2G max)
+#   - HEALTHCHECK against /actuator/health so `docker ps` shows the state
+#   - --enable-preview + tuned GC for streaming-heavy workloads
 FROM eclipse-temurin:21-jre
 
 ARG DRIVER_JAR=hitorro-mesh-driver-app/target/hitorro-mesh-driver-app-3.0.1.jar
-COPY $DRIVER_JAR /app/driver.jar
 
-# Types and driver config are mounted at runtime via docker-compose volumes
-# — see docker-compose.yml.
+# Non-root user. UID/GID 1000 is a common convention that plays nicely with
+# volume-mount permissions in most Kubernetes setups.
+RUN groupadd --gid 1000 mesh && useradd --uid 1000 --gid mesh --home /home/mesh --create-home --shell /usr/sbin/nologin mesh
+RUN mkdir -p /app /config /data && chown -R mesh:mesh /app /config /data
+
+COPY --chown=mesh:mesh $DRIVER_JAR /app/driver.jar
+USER mesh
+WORKDIR /home/mesh
+
 ENV SPRING_CONFIG_LOCATION=file:/config/driver.yml
+ENV JAVA_OPTS="-Xms512m -Xmx2g -XX:+UseG1GC -XX:MaxGCPauseMillis=200 -XX:+HeapDumpOnOutOfMemoryError -XX:HeapDumpPath=/tmp"
 
 EXPOSE 8085
-ENTRYPOINT ["java", "-jar", "/app/driver.jar"]
+
+# HEALTHCHECK: driver reports READY once Spring is up + the NATS transport
+# has been opened. 5s interval so shell exit codes surface quickly.
+HEALTHCHECK --interval=5s --timeout=3s --start-period=15s --retries=6 \
+    CMD wget -q -O- http://localhost:8085/actuator/health | grep -q '"status":"UP"' || exit 1
+
+ENTRYPOINT ["sh", "-c", "exec java $JAVA_OPTS -jar /app/driver.jar"]

@@ -3,6 +3,19 @@
 Real network hops. Real NATS. 3 agents, each holding a different shard,
 all in containers. No cluster manager involved — just Docker.
 
+## Production-ready image characteristics
+
+The Dockerfiles are hardened (phase 7e):
+- Non-root user (uid 1000) — plays nicely with Kubernetes security policies
+- Tuned JVM opts via `JAVA_OPTS` env: G1GC, 200ms pause target, `-XX:+HeapDumpOnOutOfMemoryError`
+- HEALTHCHECK against `/actuator/health` — `docker ps` shows STATUS accurately
+- ConfigMap-friendly mount paths (`/config`, `/data`)
+
+Override JVM opts at runtime:
+```bash
+docker run -e JAVA_OPTS='-Xmx8g -XX:MaxGCPauseMillis=100' hitorro/mesh-driver:3.0.1
+```
+
 ## Prereqs
 
 - Docker (or Podman with `docker compose` alias)
