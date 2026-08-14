@@ -1,0 +1,16 @@
+# Runtime image for the mesh driver. Copies the pre-built fat JAR — build
+# with the Maven build in the repo root first (see README.md), NOT via a
+# multi-stage build in this Dockerfile. Rationale: the Maven build already
+# resolves and caches all deps against your local ~/.m2, so a container
+# build would re-download hundreds of MB of Hadoop transitives every time.
+FROM eclipse-temurin:21-jre
+
+ARG DRIVER_JAR=hitorro-mesh-driver-app/target/hitorro-mesh-driver-app-3.0.1.jar
+COPY $DRIVER_JAR /app/driver.jar
+
+# Types and driver config are mounted at runtime via docker-compose volumes
+# — see docker-compose.yml.
+ENV SPRING_CONFIG_LOCATION=file:/config/driver.yml
+
+EXPOSE 8085
+ENTRYPOINT ["java", "-jar", "/app/driver.jar"]

@@ -1,0 +1,13 @@
+# Runtime image for a mesh agent. Same fat-JAR strategy as the driver —
+# build the JAR outside the container, copy it in here.
+FROM eclipse-temurin:21-jre
+
+ARG AGENT_JAR=hitorro-mesh-agent-app/target/hitorro-mesh-agent-app-3.0.1.jar
+COPY $AGENT_JAR /app/agent.jar
+
+# Agent-specific config (id, capabilities, partition to serve) is mounted
+# per replica via docker-compose so one image serves N agents.
+ENV SPRING_CONFIG_LOCATION=file:/config/agent.yml
+
+EXPOSE 8091
+ENTRYPOINT ["java", "-jar", "/app/agent.jar"]

@@ -1,0 +1,18 @@
+server:
+  port: 8091
+spring:
+  main:
+    banner-mode: off
+hitorro:
+  mesh:
+    agent:
+      id: agent-apac
+      transport: nats
+      nats-url: nats://nats:4222
+      heartbeat-interval: 500ms
+      capabilities: [jvssql, partition:docs:apac]
+      tables:
+        - name: docs
+          partition-key: apac
+          type-json-resource: file:/data/types/docs.json
+          ndjson-file: file:/data/data/apac.ndjson

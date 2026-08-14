@@ -1,0 +1,85 @@
+# Tier-2 mesh deployment: 5 containers on one Docker network.
+# Prereq: build the fat JARs first (see README.md in this directory).
+#
+# Usage:
+#   docker compose up -d              # bring up nats + driver + 3 agents
+#   docker compose logs -f driver     # watch driver logs
+#   docker compose down               # tear down
+#
+# Query the driver from the host:
+#   curl -s -X POST http://localhost:8085/mesh/queries \
+#     -H 'Content-Type: application/json' \
+#     -d '{"sql":"SELECT id FROM docs WHERE lang='\''en'\''","timeoutMs":5000}' | jq .
+name: hitorro-mesh
+
+services:
+  nats:
+    image: nats:2.10-alpine
+    container_name: mesh-nats
+    command: ["-p", "4222", "-m", "8222"]
+    ports:
+      - "4222:4222"    # client
+      - "8222:8222"    # monitoring
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "-", "http://localhost:8222/varz"]
+      interval: 2s
+      timeout: 2s
+      retries: 15
+
+  driver:
+    build:
+      context: ../..
+      dockerfile: hitorro-mesh-examples/docker/Dockerfile.driver
+    container_name: mesh-driver
+    depends_on:
+      nats:
+        condition: service_healthy
+    ports:
+      - "8085:8085"
+    volumes:
+      - ./config/driver.yml:/config/driver.yml:ro
+      - ./types:/data/types:ro
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "-", "http://localhost:8085/actuator/health"]
+      interval: 3s
+      timeout: 2s
+      retries: 20
+
+  agent-us:
+    build:
+      context: ../..
+      dockerfile: hitorro-mesh-examples/docker/Dockerfile.agent
+    container_name: mesh-agent-us
+    depends_on:
+      driver:
+        condition: service_healthy
+    volumes:
+      - ./config/agent-us.yml:/config/agent.yml:ro
+      - ./types:/data/types:ro
+      - ./data:/data/data:ro
+
+  agent-eu:
+    build:
+      context: ../..
+      dockerfile: hitorro-mesh-examples/docker/Dockerfile.agent
+    container_name: mesh-agent-eu
+    depends_on:
+      driver:
+        condition: service_healthy
+    volumes:
+      - ./config/agent-eu.yml:/config/agent.yml:ro
+      - ./types:/data/types:ro
+      - ./data:/data/data:ro
+
+  agent-apac:
+    build:
+      context: ../..
+      dockerfile: hitorro-mesh-examples/docker/Dockerfile.agent
+    container_name: mesh-agent-apac
+    depends_on:
+      driver:
+        condition: service_healthy
+    volumes:
+      - ./config/agent-apac.yml:/config/agent.yml:ro
+      - ./types:/data/types:ro
+      - ./data:/data/data:ro

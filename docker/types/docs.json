@@ -1,0 +1,9 @@
+{
+  "name": "docs",
+  "fields": [
+    {"name": "id",      "type": "core_string"},
+    {"name": "title",   "type": "core_string"},
+    {"name": "lang",    "type": "core_string"},
+    {"name": "size_kb", "type": "core_long"}
+  ]
+}

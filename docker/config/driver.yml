@@ -1,0 +1,21 @@
+server:
+  port: 8085
+spring:
+  main:
+    banner-mode: off
+hitorro:
+  mesh:
+    driver:
+      transport: nats
+      nats-url: nats://nats:4222
+      agent-expiry: 15s
+      tables:
+        - name: docs
+          type-json-resource: file:/data/types/docs.json
+          partitions:
+            - key: us
+              required-capabilities: [jvssql, partition:docs:us]
+            - key: eu
+              required-capabilities: [jvssql, partition:docs:eu]
+            - key: apac
+              required-capabilities: [jvssql, partition:docs:apac]
