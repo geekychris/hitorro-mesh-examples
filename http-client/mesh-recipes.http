@@ -1,0 +1,318 @@
+### =======================================================================
+### Hitorro Mesh — runnable HTTP recipes
+###
+### Open this file in IntelliJ (Ultimate, or Community with the HTTP Client
+### plugin). A green "run" arrow appears in the gutter next to every `###`
+### block. Click to run, response shows in the tool window.
+###
+### Prereqs — start the mesh once, then run any of these repeatedly:
+###
+###   cd hitorro-mesh-examples/scripts
+###   ./mesh-init-data.sh   # writes sample data + configs
+###   ./mesh-up.sh          # boots nats + driver + 2 agents
+###
+### Tear down when done:
+###
+###   ./mesh-down.sh
+###
+### Switch the target driver by picking an environment (IntelliJ shows a
+### dropdown at the top-right of the editor). See http-client.env.json
+### in this directory.
+### =======================================================================
+
+@driverHost = http://localhost:8085
+
+
+### -----------------------------------------------------------------------
+### Section 1 — Cluster inspection (start here to confirm the mesh is up)
+### -----------------------------------------------------------------------
+
+### GetAgents — should return at least one live jvssql-capable agent
+GET {{driverHost}}/mesh/agents
+
+> {%
+    client.test("at least one agent live", () => {
+        client.assert(response.body.length >= 1, "no agents heartbeating");
+    });
+    client.global.set("firstAgentId", response.body[0].agentId);
+%}
+
+### GetTables — see which distributed + broadcast tables are registered
+GET {{driverHost}}/mesh/tables
+
+### GetCluster — merged view of declared vs live agents (HEALTHY/MISSING/ORPHAN)
+GET {{driverHost}}/mesh/cluster
+
+### CompositeHealth — includes the MeshHealthIndicator with per-partition coverage
+GET {{driverHost}}/actuator/health
+
+### MeshHealthIndicatorAlone — just the mesh's status
+GET {{driverHost}}/actuator/health/mesh
+
+### LivenessProbe — Spring built-in; JVM-only; use for K8s livenessProbe
+GET {{driverHost}}/actuator/health/liveness
+
+### PrometheusScrape — all `mesh_*` meters + JVM + HTTP
+GET {{driverHost}}/actuator/prometheus
+
+
+### -----------------------------------------------------------------------
+### Section 2 — Basic batch queries
+### -----------------------------------------------------------------------
+
+### FilterProjection — SELECT with WHERE, results collected then returned
+POST {{driverHost}}/mesh/queries
+Content-Type: application/json
+
+{
+  "sql": "SELECT id, title FROM docs WHERE lang = 'en'",
+  "timeoutMs": 5000
+}
+
+> {%
+    client.test("returned rows", () => {
+        client.assert(response.body.rowCount > 0, "no rows returned");
+    });
+    client.test("not timed out", () => {
+        client.assert(response.body.timedOut === false);
+    });
+%}
+
+### GroupByCount — distributed aggregate with combiner-at-driver (phase 2)
+POST {{driverHost}}/mesh/queries
+Content-Type: application/json
+
+{
+  "sql": "SELECT lang, COUNT(*) AS n FROM docs GROUP BY lang",
+  "timeoutMs": 5000
+}
+
+### GroupByAvg — AVG decomposes to SUM+COUNT partials, driver reconstructs
+POST {{driverHost}}/mesh/queries
+Content-Type: application/json
+
+{
+  "sql": "SELECT lang, AVG(size_kb) AS avg_size FROM docs GROUP BY lang",
+  "timeoutMs": 5000
+}
+
+### DistinctRewrite — SELECT DISTINCT auto-rewrites to GROUP BY <all cols>
+POST {{driverHost}}/mesh/queries
+Content-Type: application/json
+
+{
+  "sql": "SELECT DISTINCT lang FROM docs",
+  "timeoutMs": 5000
+}
+
+### HavingFilter — HAVING clause on aggregate result
+POST {{driverHost}}/mesh/queries
+Content-Type: application/json
+
+{
+  "sql": "SELECT lang, COUNT(*) AS n FROM docs GROUP BY lang HAVING n >= 1",
+  "timeoutMs": 5000
+}
+
+### OrderByLimit — LIMIT pushed down to agents (phase 5b.3); N-way merge sort at driver
+POST {{driverHost}}/mesh/queries
+Content-Type: application/json
+
+{
+  "sql": "SELECT id, size_kb FROM docs ORDER BY size_kb DESC LIMIT 5",
+  "timeoutMs": 5000
+}
+
+
+### -----------------------------------------------------------------------
+### Section 3 — Query planning + debugging
+### -----------------------------------------------------------------------
+
+### ExplainSimple — see the plan the mesh picks (no execution)
+GET {{driverHost}}/mesh/queries/explain?sql=SELECT+id+FROM+docs+WHERE+lang%3D%27en%27
+
+### ExplainAggregate — TwoStagePlan with partial + combine SQL visible
+GET {{driverHost}}/mesh/queries/explain?sql=SELECT+lang%2C+COUNT%28*%29+FROM+docs+GROUP+BY+lang
+
+### ExplainAggregateAliased — verify AS aliases preserved in combine SQL
+GET {{driverHost}}/mesh/queries/explain?sql=SELECT+lang+AS+language%2C+COUNT%28*%29+AS+total+FROM+docs+GROUP+BY+lang
+
+
+### -----------------------------------------------------------------------
+### Section 4 — Query lifecycle: retries, timeouts, cancellation
+### -----------------------------------------------------------------------
+
+### RetryOnFailure — whole-query retry with exponential backoff (phase 7g)
+### Response `attempts` field shows how many were needed.
+POST {{driverHost}}/mesh/queries
+Content-Type: application/json
+
+{
+  "sql": "SELECT id FROM docs WHERE lang = 'en'",
+  "timeoutMs": 5000,
+  "retries": 2
+}
+
+### ShortTimeout — deadline fires before completion → timedOut: true, 200 OK
+### with whatever rows arrived before deadline (may be empty).
+POST {{driverHost}}/mesh/queries
+Content-Type: application/json
+
+{
+  "sql": "SELECT id FROM docs",
+  "timeoutMs": 1
+}
+
+> {%
+    // Very-short timeout — expect either a full result (fast mesh) or
+    // timedOut:true (deadline fired). Both are correct.
+    client.test("response either completed OR timedOut", () => {
+        client.assert(response.status === 200);
+    });
+%}
+
+### ListActiveQueries — while a long query runs, see it here (phase 7d)
+GET {{driverHost}}/mesh/queries
+
+### CancelUnknownQuery — DELETE with unknown queryId returns 400 (idempotent)
+DELETE {{driverHost}}/mesh/queries/does-not-exist
+
+> {%
+    client.test("unknown queryId → 400", () => {
+        client.assert(response.status === 400);
+        client.assert(response.body.error === "bad_request");
+    });
+%}
+
+
+### -----------------------------------------------------------------------
+### Section 5 — SSE (streaming results row-by-row)
+### -----------------------------------------------------------------------
+
+### StreamAsSSE — server pushes one event per row, then a `complete` event
+### IntelliJ's HTTP Client renders each SSE event as it arrives.
+GET {{driverHost}}/mesh/queries/stream?sql=SELECT+id+FROM+docs+WHERE+lang%3D%27en%27&timeoutMs=30000
+Accept: text/event-stream
+
+
+### -----------------------------------------------------------------------
+### Section 6 — Structured error responses (phase 7c)
+### -----------------------------------------------------------------------
+
+### BadSql — unregistered table → 400 with `error: bad_request`
+POST {{driverHost}}/mesh/queries
+Content-Type: application/json
+
+{
+  "sql": "SELECT id FROM does_not_exist",
+  "timeoutMs": 5000
+}
+
+> {%
+    client.test("bad table → 400", () => {
+        client.assert(response.status === 400);
+    });
+%}
+
+### JoinAgainstUnregistered — non-broadcast JOIN → 400 with actionable message
+POST {{driverHost}}/mesh/queries
+Content-Type: application/json
+
+{
+  "sql": "SELECT d.id, x.y FROM docs d JOIN x ON d.id = x.did",
+  "timeoutMs": 5000
+}
+
+> {%
+    client.test("non-broadcast JOIN → 400", () => {
+        client.assert(response.status === 400);
+        client.assert(response.body.message.includes("broadcast"));
+    });
+%}
+
+
+### -----------------------------------------------------------------------
+### Section 7 — Broadcast JOIN (only if `langs` broadcast table is registered)
+### -----------------------------------------------------------------------
+### To enable these, add to driver.yml:
+###   broadcast-tables: [langs]
+### And every agent's config:
+###   broadcast-tables:
+###     - name: langs
+###       type-json-resource: file:/path/to/langs.json
+###       ndjson-file: file:/path/to/langs.ndjson
+
+### BroadcastInnerJoin — docs INNER JOIN langs (phase 4a)
+POST {{driverHost}}/mesh/queries
+Content-Type: application/json
+
+{
+  "sql": "SELECT d.id, l.name FROM docs d JOIN langs l ON d.lang = l.code",
+  "timeoutMs": 5000
+}
+
+### BroadcastLeftOuter — unmatched left rows null-padded (phase 4c)
+POST {{driverHost}}/mesh/queries
+Content-Type: application/json
+
+{
+  "sql": "SELECT d.id, l.name FROM docs d LEFT JOIN langs l ON d.lang = l.code",
+  "timeoutMs": 5000
+}
+
+
+### -----------------------------------------------------------------------
+### Section 8 — Shuffle-hash JOIN (needs `events` distributed table)
+### -----------------------------------------------------------------------
+### Register `events` as a second distributed table on the driver + host
+### its partitions on their respective agents.
+
+### ShuffleInnerJoin — fact × fact join (phase 4b)
+POST {{driverHost}}/mesh/queries
+Content-Type: application/json
+
+{
+  "sql": "SELECT d.id, e.action FROM docs d JOIN events e ON d.id = e.doc_id",
+  "timeoutMs": 15000
+}
+
+### ShufflePlusWhere — WHERE conjuncts push down to per-side scans (phase 4b.2.1)
+POST {{driverHost}}/mesh/queries
+Content-Type: application/json
+
+{
+  "sql": "SELECT d.id, e.action FROM docs d JOIN events e ON d.id = e.doc_id WHERE d.lang = 'en' AND e.action = 'view'",
+  "timeoutMs": 15000
+}
+
+### ShufflePlusGroupBy — three-stage combine (phase 4b.2)
+POST {{driverHost}}/mesh/queries
+Content-Type: application/json
+
+{
+  "sql": "SELECT d.lang, COUNT(*) AS interactions FROM docs d JOIN events e ON d.id = e.doc_id GROUP BY d.lang",
+  "timeoutMs": 15000
+}
+
+
+### -----------------------------------------------------------------------
+### Section 9 — Streaming windowed aggregate (needs streaming source registered)
+### -----------------------------------------------------------------------
+### Requires an agent registered with a streaming table (Kafka / NATS
+### JetStream / InMemoryStreamingTable). See phase 6d.1/6d.2 in
+### ROADMAP.md for setup.
+
+### WindowedStreamingSSE — long-lived query; per-window rows arrive as SSE events
+### Cancel via DELETE with the queryId from the `opened` event.
+GET {{driverHost}}/mesh/queries/stream?sql=SELECT+WIN_START%28event_time%2C+60000%29+AS+ws%2C+COUNT%28*%29+AS+n+FROM+events+GROUP+BY+WIN_START%28event_time%2C+60000%29&timeoutMs=3600000
+Accept: text/event-stream
+
+
+### =======================================================================
+### End of recipes.
+###
+### For more:
+###   - hitorro-mesh-core/GETTING_STARTED.md — tutorial across 4 tiers
+###   - hitorro-mesh-core/docs/user-guide/    — full PDF + HTML user guide
+###   - hitorro-mesh-core/ROADMAP.md          — every shipped feature
+### =======================================================================
