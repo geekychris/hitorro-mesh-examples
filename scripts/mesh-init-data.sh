@@ -81,7 +81,16 @@ if [[ -d "$DATASETS_HOME" ]]; then
         id="$(basename "$dsdir")"
         table_name="${id//-/_}"
         type_file="$dsdir/types/${table_name}.json"
-        ndjson="$(ls "$dsdir/data/"*.ndjson 2>/dev/null | head -1)"
+        # Match .ndjson OR .ndjson.bz2 / .ndjson.gz / .ndjson.zst — install
+        # scripts can compress via HITORRO_DATASETS_COMPRESS (default: bz2).
+        # Basefile in NdjsonLocalTable decodes by extension.
+        # `find` avoids the shell glob failing with pipefail set when some
+        # patterns don't match — `ls a*.ndjson b*.bz2` exits non-zero when
+        # `a*.ndjson` matches nothing, killing the whole pipeline.
+        ndjson="$(find "$dsdir/data/" -maxdepth 1 -type f \
+                        \( -name "*.ndjson" -o -name "*.ndjson.bz2" \
+                        -o -name "*.ndjson.gz" -o -name "*.ndjson.zst" \) \
+                    2>/dev/null | head -1)"
         [[ -f "$type_file" && -f "$ndjson" ]] || continue
         # Only include broadcast datasets — manifest declares partitionBy: null.
         # The regex tolerates a trailing "# comment" on the same line, which
