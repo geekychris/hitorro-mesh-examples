@@ -58,6 +58,19 @@ Verifies phase-7a end-to-end: real openssl-generated CA + server cert,
 connecting via `tls://` with a PKCS12 truststore pointing at the CA.
 Requires `openssl` and `keytool` in addition to the usual prereqs.
 
+### mTLS smoke test
+
+```bash
+./mesh-mtls-smoke.sh   # like mesh-tls-smoke.sh but with mutual TLS —
+                       # NATS requires a client cert, mesh presents one
+                       # from a PKCS12 keystore that chains to the same CA.
+```
+Verifies the `key-store-path` / `key-store-password` half of `nats-security`.
+NATS config gets `verify: true` + `ca_file`; the mesh's Java client sends
+a client cert during the TLS handshake, NATS validates it against the CA.
+Same port-offset pattern as mesh-tls-smoke.sh — composes cleanly with the
+plain and TLS variants.
+
 ## Where things live
 
 Everything under `$MESH_WORK` (defaults to `/tmp/hitorro-mesh-smoke`):
