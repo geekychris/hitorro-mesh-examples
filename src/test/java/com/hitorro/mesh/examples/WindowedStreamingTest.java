@@ -135,13 +135,12 @@ class WindowedStreamingTest {
                 c.p2().pushRow(event(70_000L, "eng"));
 
                 // Expect ONE combined row for window 0 with count = 3 (2 from p1 + 1 from p2).
-                // Multi-partition combine output uses the internal two-stage aliases
-                // (g0 for the group col, c0 for the reduced aggregate) rather than
-                // the user's AS ws / AS n aliases — same limitation as phase-2 combine.
+                // Output columns use the user's SELECT aliases (ws, n) — phase 6d.2.3
+                // preserves them through the combine SQL.
                 JsonNode w0 = h.nextRow(3, TimeUnit.SECONDS);
                 assertThat(w0).as("combined window-0 row should emit once both partitions advance").isNotNull();
-                assertThat(w0.get("g0").asLong()).isEqualTo(0L);
-                assertThat(w0.get("c0").asLong()).as("2 events from p1 + 1 from p2").isEqualTo(3L);
+                assertThat(w0.get("ws").asLong()).isEqualTo(0L);
+                assertThat(w0.get("n").asLong()).as("2 events from p1 + 1 from p2").isEqualTo(3L);
 
                 // Terminate both streams → any remaining buffered windows flush.
                 c.p1().stop();
@@ -151,8 +150,8 @@ class WindowedStreamingTest {
                 // On EOS both partitions' remaining open windows are flushed.
                 JsonNode w1 = h.nextRow(3, TimeUnit.SECONDS);
                 assertThat(w1).isNotNull();
-                assertThat(w1.get("g0").asLong()).isEqualTo(60_000L);
-                assertThat(w1.get("c0").asLong()).as("1 event per partition in window 1").isEqualTo(2L);
+                assertThat(w1.get("ws").asLong()).isEqualTo(60_000L);
+                assertThat(w1.get("n").asLong()).as("1 event per partition in window 1").isEqualTo(2L);
 
                 assertThat(h.nextRow(2, TimeUnit.SECONDS)).as("no more rows after both streams stopped").isNull();
             }
@@ -196,8 +195,8 @@ class WindowedStreamingTest {
                 JsonNode w0 = h.nextRow(3, TimeUnit.SECONDS);
                 assertThat(w0).as("window 0 should close via p2's watermark heartbeat, "
                         + "even though p2 has no events in window 0").isNotNull();
-                assertThat(w0.get("g0").asLong()).isEqualTo(0L);
-                assertThat(w0.get("c0").asLong()).as("only p1's 2 events, p2 contributed 0").isEqualTo(2L);
+                assertThat(w0.get("ws").asLong()).isEqualTo(0L);
+                assertThat(w0.get("n").asLong()).as("only p1's 2 events, p2 contributed 0").isEqualTo(2L);
 
                 c.p1().stop();
                 c.p2().stop();
@@ -209,8 +208,8 @@ class WindowedStreamingTest {
                 // Both partitions contribute 1 row for window 480_000 → combined 2.
                 JsonNode w480 = h.nextRow(3, TimeUnit.SECONDS);
                 assertThat(w480).isNotNull();
-                assertThat(w480.get("g0").asLong()).isEqualTo(480_000L);
-                assertThat(w480.get("c0").asLong()).isEqualTo(2L);
+                assertThat(w480.get("ws").asLong()).isEqualTo(480_000L);
+                assertThat(w480.get("n").asLong()).isEqualTo(2L);
 
                 assertThat(h.nextRow(2, TimeUnit.SECONDS)).isNull();
             }
