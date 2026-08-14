@@ -25,7 +25,6 @@ import java.util.Set;
 import java.util.concurrent.TimeUnit;
 
 import static org.assertj.core.api.Assertions.assertThat;
-import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 /**
  * Phase 6d.1: watermark-driven windowed streaming aggregate.
@@ -110,16 +109,53 @@ class WindowedStreamingTest {
     }
 
     @Test
-    void multiPartitionStreaming_rejectedAtDispatchTime() throws Exception {
-        // MVP scope: single-partition only for streaming aggregate. Two
-        // partitions would need cross-partition combine (phase 6d.2).
-        try (var c = new TestCluster(/*extraPartitions*/ true)) {
-            assertThatThrownBy(() -> c.driver().dispatcher().submit(
-                    "SELECT WIN_START(event_time, " + WINDOW_MS + ") AS ws, COUNT(*) AS n "
-                    + "FROM events GROUP BY WIN_START(event_time, " + WINDOW_MS + ")"))
-                    .isInstanceOf(IllegalArgumentException.class)
-                    .hasMessageContaining("single-partition")
-                    .hasMessageContaining("phase 6d.2");
+    void multiPartitionStream_combinesPerWindowAcrossPartitions() throws Exception {
+        // Phase 6d.2 — two partitions, both streaming. Windows close globally
+        // when EVERY partition has emitted a row for a strictly later window
+        // (advance-past heuristic). Driver reduces per-window partials using
+        // the phase-2 combine SQL over an in-memory jvssql engine.
+        try (var c = new MultiPartitionCluster()) {
+            try (var h = c.driver().dispatcher().submit(
+                    "SELECT WIN_START(event_time, " + WINDOW_MS + ") AS ws, "
+                    + "       COUNT(*) AS n "
+                    + "FROM events "
+                    + "GROUP BY WIN_START(event_time, " + WINDOW_MS + ")")) {
+
+                Thread.sleep(150);
+
+                // Push events in window 0 to BOTH partitions.
+                c.p1().pushRow(event(0L, "eng"));
+                c.p1().pushRow(event(30_000L, "eng"));
+                c.p2().pushRow(event(15_000L, "eng"));
+
+                // Advance BOTH partitions' watermark to window 1.
+                //   → each partition emits its own window-0 partial row
+                //   → global min-latest = 60_000 > 0, so window 0 closes
+                c.p1().pushRow(event(65_000L, "eng"));
+                c.p2().pushRow(event(70_000L, "eng"));
+
+                // Expect ONE combined row for window 0 with count = 3 (2 from p1 + 1 from p2).
+                // Multi-partition combine output uses the internal two-stage aliases
+                // (g0 for the group col, c0 for the reduced aggregate) rather than
+                // the user's AS ws / AS n aliases — same limitation as phase-2 combine.
+                JsonNode w0 = h.nextRow(3, TimeUnit.SECONDS);
+                assertThat(w0).as("combined window-0 row should emit once both partitions advance").isNotNull();
+                assertThat(w0.get("g0").asLong()).isEqualTo(0L);
+                assertThat(w0.get("c0").asLong()).as("2 events from p1 + 1 from p2").isEqualTo(3L);
+
+                // Terminate both streams → any remaining buffered windows flush.
+                c.p1().stop();
+                c.p2().stop();
+
+                // The (65_000, 70_000) events landed in window 1 (start=60_000).
+                // On EOS both partitions' remaining open windows are flushed.
+                JsonNode w1 = h.nextRow(3, TimeUnit.SECONDS);
+                assertThat(w1).isNotNull();
+                assertThat(w1.get("g0").asLong()).isEqualTo(60_000L);
+                assertThat(w1.get("c0").asLong()).as("1 event per partition in window 1").isEqualTo(2L);
+
+                assertThat(h.nextRow(2, TimeUnit.SECONDS)).as("no more rows after both streams stopped").isNull();
+            }
         }
     }
 
@@ -146,22 +182,15 @@ class WindowedStreamingTest {
         private final List<MeshAgent> agents = new ArrayList<>();
         private final InMemoryStreamingTable streaming;
 
-        TestCluster() throws Exception { this(false); }
-
-        TestCluster(boolean extraPartitions) throws Exception {
+        TestCluster() throws Exception {
             Type eventsType = eventsType();
             StreamConfig streamCfg = StreamConfig.eventTime("event_time");
             streaming = new InMemoryStreamingTable("events", eventsType, "p1", streamCfg);
 
             DistributedTableRegistry tables = new DistributedTableRegistry();
-            List<DistributedTable.Partition> parts = new ArrayList<>();
-            parts.add(new DistributedTable.Partition("p1",
-                    Set.of("jvssql", "partition:events:p1"), -1));
-            if (extraPartitions) {
-                parts.add(new DistributedTable.Partition("p2",
-                        Set.of("jvssql", "partition:events:p2"), -1));
-            }
-            tables.register(new StreamingDistTable("events", eventsType, parts, streamCfg));
+            tables.register(new StreamingDistTable("events", eventsType, List.of(
+                    new DistributedTable.Partition("p1",
+                            Set.of("jvssql", "partition:events:p1"), -1)), streamCfg));
 
             driver = new MeshDriver(transport, tables, 10_000);
             driver.start();
@@ -201,5 +230,63 @@ class WindowedStreamingTest {
                                       List<DistributedTable.Partition> partitions,
                                       StreamConfig sc) implements DistributedTable {
         @Override public StreamConfig streamConfig() { return sc; }
+    }
+
+    /** Two-partition cluster for the phase-6d.2 cross-partition combine test. */
+    private static final class MultiPartitionCluster implements AutoCloseable {
+        private final MeshTransport transport = new InMemoryMeshTransport();
+        private final MeshDriver driver;
+        private final List<MeshAgent> agents = new ArrayList<>();
+        private final InMemoryStreamingTable p1;
+        private final InMemoryStreamingTable p2;
+
+        MultiPartitionCluster() throws Exception {
+            Type eventsType = eventsType();
+            StreamConfig streamCfg = StreamConfig.eventTime("event_time");
+            p1 = new InMemoryStreamingTable("events", eventsType, "p1", streamCfg);
+            p2 = new InMemoryStreamingTable("events", eventsType, "p2", streamCfg);
+
+            DistributedTableRegistry tables = new DistributedTableRegistry();
+            tables.register(new StreamingDistTable("events", eventsType, List.of(
+                    new DistributedTable.Partition("p1", Set.of("jvssql", "partition:events:p1"), -1),
+                    new DistributedTable.Partition("p2", Set.of("jvssql", "partition:events:p2"), -1)
+            ), streamCfg));
+
+            driver = new MeshDriver(transport, tables, 10_000);
+            driver.start();
+
+            agents.add(spawn("agent-p1", p1));
+            agents.add(spawn("agent-p2", p2));
+            waitForAgents(2);
+        }
+
+        private MeshAgent spawn(String id, InMemoryStreamingTable table) {
+            AgentConfig cfg = new AgentConfig(id,
+                    Set.of("jvssql", "partition:events:" + table.partitionKey()),
+                    Duration.ofMillis(100),
+                    List.of(table));
+            MeshAgent a = new MeshAgent(transport, cfg);
+            a.start();
+            return a;
+        }
+
+        private void waitForAgents(int expected) throws InterruptedException {
+            long deadline = System.currentTimeMillis() + 2_000;
+            while (System.currentTimeMillis() < deadline) {
+                if (driver.agents().liveCount() >= expected) return;
+                Thread.sleep(25);
+            }
+            throw new IllegalStateException("only " + driver.agents().liveCount() + "/" + expected);
+        }
+
+        MeshDriver driver() { return driver; }
+        InMemoryStreamingTable p1() { return p1; }
+        InMemoryStreamingTable p2() { return p2; }
+
+        @Override public void close() {
+            for (var a : agents) a.close();
+            driver.close();
+            transport.close();
+        }
     }
 }
