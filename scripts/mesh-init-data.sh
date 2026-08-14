@@ -64,6 +64,62 @@ hitorro:
               required-capabilities: [jvssql, partition:docs:eu]
 YAML
 
+# ---- discover broadcast datasets installed under $HITORRO_DATASETS_HOME
+# and emit a yaml block that every agent will pre-load. Each broadcast
+# dataset ships one manifest with partitionBy: null; the layout on disk is:
+#     $HITORRO_DATASETS_HOME/<id>/
+#       manifest.yaml
+#       data/<file>.ndjson
+#       types/<snake_case_name>.json
+# The driver's datasets autoconfig registers these with the driver's
+# metadata; this loop wires the actual data at each agent side.
+DATASETS_HOME="${HITORRO_DATASETS_HOME:-$HOME/.hitorro/datasets}"
+BROADCAST_BLOCK=""
+if [[ -d "$DATASETS_HOME" ]]; then
+    for dsdir in "$DATASETS_HOME"/*/; do
+        [[ -d "$dsdir" ]] || continue
+        id="$(basename "$dsdir")"
+        table_name="${id//-/_}"
+        type_file="$dsdir/types/${table_name}.json"
+        ndjson="$(ls "$dsdir/data/"*.ndjson 2>/dev/null | head -1)"
+        [[ -f "$type_file" && -f "$ndjson" ]] || continue
+        # Only include broadcast datasets — manifest declares partitionBy: null.
+        # The regex tolerates a trailing "# comment" on the same line, which
+        # the shipped manifests use for row-count hints ("# broadcast — ~2k rows").
+        if grep -qE '^partitionBy:[[:space:]]*(null|~)?[[:space:]]*(#.*)?$' "$dsdir/manifest.yaml"; then
+            BROADCAST_BLOCK+="        - name: $table_name"$'\n'
+            BROADCAST_BLOCK+="          type-json-resource: file:$type_file"$'\n'
+            BROADCAST_BLOCK+="          ndjson-file: file:$ndjson"$'\n'
+        fi
+    done
+fi
+
+if [[ -n "$BROADCAST_BLOCK" ]]; then
+    # Trailing newline before the closing YAML terminator so the heredoc
+    # parser sees YAML at column 1 on its own line.
+    BROADCAST_YAML="      broadcast-tables:"$'\n'"${BROADCAST_BLOCK%$'\n'}"$'\n'
+    # ALSO expose each broadcast dataset as a partitioned table with
+    # partition-key=broadcast. That's what the driver's dual registration
+    # (see hitorro-mesh-datasets' Autoregistrar) dispatches against when
+    # a user runs "SELECT * FROM wikidata_cities" — the FROM-must-be-
+    # distributed constraint means we need a partitioned entry, and every
+    # jvssql agent carries the same broadcast data so the partition key
+    # is a constant "broadcast".
+    PART_BLOCK=""
+    while IFS= read -r line; do
+        if [[ "$line" =~ ^[[:space:]]*-[[:space:]]name:[[:space:]](.*)$ ]]; then
+            PART_BLOCK+="        - name: ${BASH_REMATCH[1]}"$'\n'
+            PART_BLOCK+="          partition-key: broadcast"$'\n'
+        elif [[ "$line" =~ ^[[:space:]]+(type-json-resource|ndjson-file):[[:space:]](.*)$ ]]; then
+            PART_BLOCK+="          ${BASH_REMATCH[1]}: ${BASH_REMATCH[2]}"$'\n'
+        fi
+    done <<< "$BROADCAST_BLOCK"
+    PARTITIONED_APPEND="${PART_BLOCK%$'\n'}"$'\n'
+else
+    BROADCAST_YAML=""
+    PARTITIONED_APPEND=""
+fi
+
 # ---- agent-us config ----
 cat > "$MESH_WORK/config/agent-us.yml" <<YAML
 server:
@@ -86,6 +142,7 @@ hitorro:
           partition-key: us
           type-json-resource: file:$MESH_WORK/types/docs.json
           ndjson-file: file:$MESH_WORK/data/us.ndjson
+${PARTITIONED_APPEND}${BROADCAST_YAML}
 YAML
 
 # ---- agent-eu config ----
@@ -110,7 +167,13 @@ hitorro:
           partition-key: eu
           type-json-resource: file:$MESH_WORK/types/docs.json
           ndjson-file: file:$MESH_WORK/data/eu.ndjson
+${PARTITIONED_APPEND}${BROADCAST_YAML}
 YAML
 
 echo "initialized $MESH_WORK:"
 find "$MESH_WORK" -type f -not -path '*/logs/*' -not -path '*/pids/*' | sort
+if [[ -n "$BROADCAST_BLOCK" ]]; then
+    echo ""
+    echo "broadcast datasets loaded on each agent:"
+    echo "$BROADCAST_BLOCK" | grep -oE '\- name: \S+' | sed 's/- /  /'
+fi
