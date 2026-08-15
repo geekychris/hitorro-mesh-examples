@@ -147,16 +147,15 @@ hitorro:
         - jvssql
         - pipeline-node
         - partition:docs:us
-    pipelines:
-      enabled: true
-      agent-id: agent-us
-      nats-url: nats://localhost:$MESH_NATS_PORT
       tables:
         - name: docs
           partition-key: us
           type-json-resource: file:$MESH_WORK/types/docs.json
           ndjson-file: file:$MESH_WORK/data/us.ndjson
-${PARTITIONED_APPEND}${BROADCAST_YAML}
+${PARTITIONED_APPEND}${BROADCAST_YAML}    pipelines:
+      enabled: true
+      agent-id: agent-us
+      nats-url: nats://localhost:$MESH_NATS_PORT
 YAML
 
 # ---- agent-eu config ----
@@ -177,16 +176,15 @@ hitorro:
         - jvssql
         - pipeline-node
         - partition:docs:eu
-    pipelines:
-      enabled: true
-      agent-id: agent-eu
-      nats-url: nats://localhost:$MESH_NATS_PORT
       tables:
         - name: docs
           partition-key: eu
           type-json-resource: file:$MESH_WORK/types/docs.json
           ndjson-file: file:$MESH_WORK/data/eu.ndjson
-${PARTITIONED_APPEND}${BROADCAST_YAML}
+${PARTITIONED_APPEND}${BROADCAST_YAML}    pipelines:
+      enabled: true
+      agent-id: agent-eu
+      nats-url: nats://localhost:$MESH_NATS_PORT
 YAML
 
 echo "initialized $MESH_WORK:"
