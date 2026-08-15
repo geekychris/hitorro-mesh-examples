@@ -44,16 +44,38 @@ _wait_tcp() {
 _launch nats "$MESH_NATS_BIN" -p "$MESH_NATS_PORT"
 _wait_tcp localhost "$MESH_NATS_PORT" nats
 
-# 2. Driver
-_launch driver java -jar "$MESH_DRIVER_JAR" --spring.config.location=file:"$MESH_WORK/config/driver.yml"
+# 2. Driver — with HT_BIN so the type system + LuceneFieldTypes resolve
+# their config, and JDWP on MESH_DRIVER_JDWP so IntelliJ can attach.
+_driver_jdwp=$(_jdwp_arg "$MESH_DRIVER_JDWP")
+_launch driver env HT_BIN="$HT_BIN" java $_driver_jdwp \
+    -DHT_BIN="$HT_BIN" -Dht.bin="$HT_BIN" \
+    -jar "$MESH_DRIVER_JAR" --spring.config.location=file:"$MESH_WORK/config/driver.yml"
 _wait_tcp localhost "$MESH_DRIVER_PORT" driver 60
 
-# 3. Agents (in parallel)
-_launch agent-us java -jar "$MESH_AGENT_JAR" --spring.config.location=file:"$MESH_WORK/config/agent-us.yml"
-_launch agent-eu java -jar "$MESH_AGENT_JAR" --spring.config.location=file:"$MESH_WORK/config/agent-eu.yml"
+# 3. Agents (in parallel) — same HT_BIN + per-agent JDWP port.
+_us_jdwp=$(_jdwp_arg "$MESH_AGENT_US_JDWP")
+_eu_jdwp=$(_jdwp_arg "$MESH_AGENT_EU_JDWP")
+_launch agent-us env HT_BIN="$HT_BIN" java $_us_jdwp \
+    -DHT_BIN="$HT_BIN" -Dht.bin="$HT_BIN" \
+    -jar "$MESH_AGENT_JAR" --spring.config.location=file:"$MESH_WORK/config/agent-us.yml"
+_launch agent-eu env HT_BIN="$HT_BIN" java $_eu_jdwp \
+    -DHT_BIN="$HT_BIN" -Dht.bin="$HT_BIN" \
+    -jar "$MESH_AGENT_JAR" --spring.config.location=file:"$MESH_WORK/config/agent-eu.yml"
 
 echo
 echo "mesh is up. try:"
 echo "  ./mesh-status.sh"
 echo "  ./mesh-query.sh \"SELECT id, title FROM docs WHERE lang = 'en'\""
 echo "  ./mesh-down.sh"
+if [ "${MESH_JDWP_ENABLE:-0}" = "1" ]; then
+    echo
+    echo "JDWP: driver=localhost:$MESH_DRIVER_JDWP  agent-us=localhost:$MESH_AGENT_US_JDWP  agent-eu=localhost:$MESH_AGENT_EU_JDWP"
+    echo "  attach with:  jdb -attach localhost:$MESH_DRIVER_JDWP"
+    echo "  or IntelliJ:  Run → Edit Configurations → + → Remote JVM Debug → Host localhost Port $MESH_DRIVER_JDWP"
+fi
+echo
+echo "HT_BIN=$HT_BIN"
+if [ ! -d "$HT_BIN/config/jsonconfigs/lucene" ]; then
+    echo "  WARN: $HT_BIN/config/jsonconfigs/lucene not found — jvs-lucene sink"
+    echo "        will silently skip typed fields until HT_BIN is corrected."
+fi
