@@ -145,7 +145,12 @@ hitorro:
       heartbeat-interval: 500ms
       capabilities:
         - jvssql
+        - pipeline-node
         - partition:docs:us
+    pipelines:
+      enabled: true
+      agent-id: agent-us
+      nats-url: nats://localhost:$MESH_NATS_PORT
       tables:
         - name: docs
           partition-key: us
@@ -170,7 +175,12 @@ hitorro:
       heartbeat-interval: 500ms
       capabilities:
         - jvssql
+        - pipeline-node
         - partition:docs:eu
+    pipelines:
+      enabled: true
+      agent-id: agent-eu
+      nats-url: nats://localhost:$MESH_NATS_PORT
       tables:
         - name: docs
           partition-key: eu
