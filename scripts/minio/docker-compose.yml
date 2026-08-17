@@ -1,0 +1,56 @@
+# Local MinIO for HiTorro mesh dev — S3-compatible object storage that
+# the mesh's basefile S3 adapter (com.hitorro.util.basefile.fs.s3) can
+# read/write against without touching AWS.
+#
+# Ports:
+#   9000  — S3 API (mesh + install scripts talk to this)
+#   9001  — MinIO console UI (http://localhost:9001, root/root12345)
+#
+# Data lives in a docker-managed volume so restarts are non-destructive.
+# Nuke with `./minio-down.sh --wipe`.
+services:
+  minio:
+    image: minio/minio:latest
+    container_name: hitorro-minio
+    ports:
+      - "${HITORRO_MINIO_S3_PORT:-9000}:9000"
+      - "${HITORRO_MINIO_CONSOLE_PORT:-9001}:9001"
+    environment:
+      MINIO_ROOT_USER: "${HITORRO_MINIO_ROOT_USER:-hitorro}"
+      MINIO_ROOT_PASSWORD: "${HITORRO_MINIO_ROOT_PASSWORD:-hitorro-dev-only}"
+    command: server /data --console-address ":9001"
+    volumes:
+      - hitorro-minio-data:/data
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/live"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+      start_period: 5s
+    restart: unless-stopped
+
+  # One-shot bucket bootstrap. Waits for MinIO healthcheck, then creates
+  # the default bucket. Exits after bootstrap so it doesn't sit idle.
+  bucket-init:
+    image: minio/mc:latest
+    container_name: hitorro-minio-init
+    depends_on:
+      minio:
+        condition: service_healthy
+    environment:
+      HITORRO_MINIO_ROOT_USER: "${HITORRO_MINIO_ROOT_USER:-hitorro}"
+      HITORRO_MINIO_ROOT_PASSWORD: "${HITORRO_MINIO_ROOT_PASSWORD:-hitorro-dev-only}"
+      HITORRO_MINIO_BUCKET: "${HITORRO_MINIO_BUCKET:-hitorro}"
+    entrypoint:
+      - sh
+      - -c
+      - |
+        set -e
+        mc alias set local http://minio:9000 "$$HITORRO_MINIO_ROOT_USER" "$$HITORRO_MINIO_ROOT_PASSWORD"
+        mc mb --ignore-existing local/"$$HITORRO_MINIO_BUCKET"
+        mc anonymous set download local/"$$HITORRO_MINIO_BUCKET"/public 2>/dev/null || true
+        echo "bucket $$HITORRO_MINIO_BUCKET ready at http://localhost:9000"
+
+volumes:
+  hitorro-minio-data:
+    name: hitorro-minio-data

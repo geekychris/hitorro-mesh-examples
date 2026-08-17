@@ -74,6 +74,16 @@ YAML
 # The driver's datasets autoconfig registers these with the driver's
 # metadata; this loop wires the actual data at each agent side.
 DATASETS_HOME="${HITORRO_DATASETS_HOME:-$HOME/.hitorro/datasets}"
+
+# When HITORRO_DATASETS_S3_ENDPOINT is set, agents get s3:// URIs pointing
+# at the MinIO / S3 bucket populated by minio-sync-datasets.sh — no local
+# NDJson needed on the agent host. Both the URI scheme AND the S3
+# adapter registration (via S3StorageAutoConfig on the agent JVM) must
+# be in place for reads to succeed.
+S3_ENDPOINT="${HITORRO_DATASETS_S3_ENDPOINT:-}"
+S3_BUCKET="${HITORRO_DATASETS_S3_BUCKET:-${HITORRO_MINIO_BUCKET:-hitorro}}"
+S3_PREFIX="${HITORRO_DATASETS_S3_PREFIX:-datasets}"
+
 BROADCAST_BLOCK=""
 if [[ -d "$DATASETS_HOME" ]]; then
     for dsdir in "$DATASETS_HOME"/*/; do
@@ -96,9 +106,21 @@ if [[ -d "$DATASETS_HOME" ]]; then
         # The regex tolerates a trailing "# comment" on the same line, which
         # the shipped manifests use for row-count hints ("# broadcast — ~2k rows").
         if grep -qE '^partitionBy:[[:space:]]*(null|~)?[[:space:]]*(#.*)?$' "$dsdir/manifest.yaml"; then
+            # Rewrite absolute paths as s3:// URIs when S3_ENDPOINT is set.
+            # Everything under $DATASETS_HOME lives at s3://$BUCKET/$PREFIX/<id>/…
+            # after minio-sync-datasets.sh has run.
+            if [[ -n "$S3_ENDPOINT" ]]; then
+                rel_type="${type_file#$DATASETS_HOME/}"
+                rel_data="${ndjson#$DATASETS_HOME/}"
+                type_uri="s3://$S3_BUCKET/$S3_PREFIX/$rel_type"
+                data_uri="s3://$S3_BUCKET/$S3_PREFIX/$rel_data"
+            else
+                type_uri="file:$type_file"
+                data_uri="file:$ndjson"
+            fi
             BROADCAST_BLOCK+="        - name: $table_name"$'\n'
-            BROADCAST_BLOCK+="          type-json-resource: file:$type_file"$'\n'
-            BROADCAST_BLOCK+="          ndjson-file: file:$ndjson"$'\n'
+            BROADCAST_BLOCK+="          type-json-resource: $type_uri"$'\n'
+            BROADCAST_BLOCK+="          ndjson-file: $data_uri"$'\n'
         fi
     done
 fi
