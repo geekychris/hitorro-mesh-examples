@@ -14,7 +14,15 @@ source ./env.sh
 [ -n "$MESH_NATS_BIN" ] || _mesh_die "nats-server not on PATH (Orion ships one at ~/.orion/bin/nats-server; try: export PATH=\$HOME/.orion/bin:\$PATH)"
 [ -f "$MESH_DRIVER_JAR" ] || _mesh_die "driver jar missing: $MESH_DRIVER_JAR — run: (cd $MESH_ROOT/hitorro-mesh-driver-app && mvn install -DskipTests)"
 [ -f "$MESH_AGENT_JAR" ]  || _mesh_die "agent jar missing:  $MESH_AGENT_JAR  — run: (cd $MESH_ROOT/hitorro-mesh-agent-app && mvn install -DskipTests)"
-[ -f "$MESH_WORK/config/driver.yml" ] || _mesh_die "run ./mesh-init-data.sh first"
+
+# Always regenerate configs — picks up broadcast datasets installed
+# since the last mesh-up. Cheap (subsecond) and idempotent. Users who
+# want to preserve manually-hand-edited configs can set MESH_SKIP_INIT=1.
+if [ "${MESH_SKIP_INIT:-0}" != "1" ]; then
+    ./mesh-init-data.sh > /dev/null
+    echo "regenerated $MESH_WORK/config (set MESH_SKIP_INIT=1 to skip)"
+fi
+[ -f "$MESH_WORK/config/driver.yml" ] || _mesh_die "config missing after regen — check ./mesh-init-data.sh output"
 
 _launch() {
     local name=$1; shift
