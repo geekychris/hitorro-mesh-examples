@@ -102,28 +102,50 @@ if [[ -d "$DATASETS_HOME" ]]; then
                         -o -name "*.ndjson.gz" -o -name "*.ndjson.zst" \) \
                     2>/dev/null | head -1)"
         [[ -f "$type_file" && -f "$ndjson" ]] || continue
+
+        # Rewrite absolute paths as s3:// URIs when S3_ENDPOINT is set.
+        # Everything under $DATASETS_HOME lives at s3://$BUCKET/$PREFIX/<id>/…
+        # after minio-sync-datasets.sh has run. Computed BEFORE the
+        # broadcast/partitioned split so both branches see fresh URIs
+        # for the current dataset (regression fix — before this, the
+        # partitioned branch reused stale values from a prior iteration
+        # and every partitioned table pointed at the same file).
+        if [[ -n "$S3_ENDPOINT" ]]; then
+            rel_type="${type_file#$DATASETS_HOME/}"
+            rel_data="${ndjson#$DATASETS_HOME/}"
+            type_uri="s3://$S3_BUCKET/$S3_PREFIX/$rel_type"
+            data_uri="s3://$S3_BUCKET/$S3_PREFIX/$rel_data"
+        else
+            type_uri="file:$type_file"
+            data_uri="file:$ndjson"
+        fi
+
         # Only include broadcast datasets — manifest declares partitionBy: null.
         # The regex tolerates a trailing "# comment" on the same line, which
         # the shipped manifests use for row-count hints ("# broadcast — ~2k rows").
         if grep -qE '^partitionBy:[[:space:]]*(null|~)?[[:space:]]*(#.*)?$' "$dsdir/manifest.yaml"; then
-            # Rewrite absolute paths as s3:// URIs when S3_ENDPOINT is set.
-            # Everything under $DATASETS_HOME lives at s3://$BUCKET/$PREFIX/<id>/…
-            # after minio-sync-datasets.sh has run.
-            if [[ -n "$S3_ENDPOINT" ]]; then
-                rel_type="${type_file#$DATASETS_HOME/}"
-                rel_data="${ndjson#$DATASETS_HOME/}"
-                type_uri="s3://$S3_BUCKET/$S3_PREFIX/$rel_type"
-                data_uri="s3://$S3_BUCKET/$S3_PREFIX/$rel_data"
-            else
-                type_uri="file:$type_file"
-                data_uri="file:$ndjson"
-            fi
             BROADCAST_BLOCK+="        - name: $table_name"$'\n'
             BROADCAST_BLOCK+="          type-json-resource: $type_uri"$'\n'
             BROADCAST_BLOCK+="          ndjson-file: $data_uri"$'\n'
+        else
+            # Partitioned dataset (partitionBy: <something>). The driver's
+            # Autoregistrar registers these with a single partition named
+            # "all" — every jvssql agent must hold the data and advertise
+            # partition:<table>:all so SELECT * FROM works. Without this
+            # branch, agents would say "does not hold partition all of
+            # table X" the first time you queried it.
+            PARTITIONED_ALL_BLOCK+="        - name: $table_name"$'\n'
+            PARTITIONED_ALL_BLOCK+="          partition-key: all"$'\n'
+            PARTITIONED_ALL_BLOCK+="          type-json-resource: $type_uri"$'\n'
+            PARTITIONED_ALL_BLOCK+="          ndjson-file: $data_uri"$'\n'
+            PARTITIONED_ALL_CAPS+="        - \"partition:$table_name:all\""$'\n'
         fi
     done
 fi
+
+# Newline-terminate PARTITIONED_ALL_BLOCK/CAPS so heredocs see YAML at column 1.
+PARTITIONED_ALL_BLOCK="${PARTITIONED_ALL_BLOCK:-}"
+PARTITIONED_ALL_CAPS="${PARTITIONED_ALL_CAPS:-}"
 
 if [[ -n "$BROADCAST_BLOCK" ]]; then
     # Trailing newline before the closing YAML terminator so the heredoc
@@ -169,12 +191,12 @@ hitorro:
         - jvssql
         - pipeline-node
         - partition:docs:us
-      tables:
+${PARTITIONED_ALL_CAPS}      tables:
         - name: docs
           partition-key: us
           type-json-resource: file:$MESH_WORK/types/docs.json
           ndjson-file: file:$MESH_WORK/data/us.ndjson
-${PARTITIONED_APPEND}${BROADCAST_YAML}    pipelines:
+${PARTITIONED_APPEND}${PARTITIONED_ALL_BLOCK}${BROADCAST_YAML}    pipelines:
       enabled: true
       agent-id: agent-us
       nats-url: nats://localhost:$MESH_NATS_PORT
@@ -198,12 +220,12 @@ hitorro:
         - jvssql
         - pipeline-node
         - partition:docs:eu
-      tables:
+${PARTITIONED_ALL_CAPS}      tables:
         - name: docs
           partition-key: eu
           type-json-resource: file:$MESH_WORK/types/docs.json
           ndjson-file: file:$MESH_WORK/data/eu.ndjson
-${PARTITIONED_APPEND}${BROADCAST_YAML}    pipelines:
+${PARTITIONED_APPEND}${PARTITIONED_ALL_BLOCK}${BROADCAST_YAML}    pipelines:
       enabled: true
       agent-id: agent-eu
       nats-url: nats://localhost:$MESH_NATS_PORT
