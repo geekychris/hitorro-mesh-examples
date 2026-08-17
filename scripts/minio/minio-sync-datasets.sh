@@ -10,6 +10,10 @@
 #
 # Idempotent — mc's `mirror` command skips unchanged files.
 #
+# Usage:
+#   minio-sync-datasets.sh              # mirror EVERY dataset dir
+#   minio-sync-datasets.sh <dataset-id> # mirror ONE dataset dir
+#
 # Env:
 #   HITORRO_DATASETS_HOME          default $HOME/.hitorro/datasets
 #   HITORRO_MINIO_S3_PORT          default 9000
@@ -22,6 +26,8 @@
 set -euo pipefail
 
 DATASETS_HOME="${HITORRO_DATASETS_HOME:-$HOME/.hitorro/datasets}"
+# Positional arg — when provided, scope to one dataset directory.
+ONLY_DATASET="${1:-}"
 S3_PORT="${HITORRO_MINIO_S3_PORT:-9000}"
 USER="${HITORRO_MINIO_ROOT_USER:-hitorro}"
 PASS="${HITORRO_MINIO_ROOT_PASSWORD:-hitorro-dev-only}"
@@ -54,11 +60,22 @@ info "configuring mc alias $ALIAS → $ENDPOINT"
 
 "${MC[@]}" mb --ignore-existing "$ALIAS/$BUCKET" >/dev/null
 
-count=$(find "$DATASETS_HOME" -maxdepth 1 -mindepth 1 -type d | wc -l | tr -d ' ')
-info "mirroring $count dataset(s) to $ALIAS/$BUCKET/datasets/"
-
-"${MC[@]}" mirror --overwrite --remove "$SRC" "$ALIAS/$BUCKET/datasets/" \
-    | grep -v '^\.\.\.$' | tail -20 || true
+if [ -n "$ONLY_DATASET" ]; then
+    if [ ! -d "$DATASETS_HOME/$ONLY_DATASET" ]; then
+        die "no such dataset dir: $DATASETS_HOME/$ONLY_DATASET"
+    fi
+    info "mirroring 1 dataset ($ONLY_DATASET) to $ALIAS/$BUCKET/datasets/$ONLY_DATASET/"
+    # Note: --remove would purge unrelated objects in the destination; scope
+    # scoped-sync to overwrite-only so it doesn't touch the rest of the bucket.
+    "${MC[@]}" mirror --overwrite "$SRC/$ONLY_DATASET" \
+        "$ALIAS/$BUCKET/datasets/$ONLY_DATASET/" \
+        | grep -v '^\.\.\.$' | tail -20 || true
+else
+    count=$(find "$DATASETS_HOME" -maxdepth 1 -mindepth 1 -type d | wc -l | tr -d ' ')
+    info "mirroring $count dataset(s) to $ALIAS/$BUCKET/datasets/"
+    "${MC[@]}" mirror --overwrite --remove "$SRC" "$ALIAS/$BUCKET/datasets/" \
+        | grep -v '^\.\.\.$' | tail -20 || true
+fi
 
 ok "sync done — console: http://localhost:${HITORRO_MINIO_CONSOLE_PORT:-9001}"
 
