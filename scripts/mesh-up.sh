@@ -57,6 +57,8 @@ _wait_tcp localhost "$MESH_NATS_PORT" nats
 _driver_jdwp=$(_jdwp_arg "$MESH_DRIVER_JDWP")
 _launch driver env HT_BIN="$HT_BIN" java $_driver_jdwp \
     -DHT_BIN="$HT_BIN" -Dht.bin="$HT_BIN" \
+    -DHT_HOME="$HT_BIN" -Dht.home="$HT_BIN" \
+    -DHT_DATA="$HT_BIN/data" -Dht.data="$HT_BIN/data" \
     -jar "$MESH_DRIVER_JAR" --spring.config.location=file:"$MESH_WORK/config/driver.yml"
 _wait_tcp localhost "$MESH_DRIVER_PORT" driver 60
 
@@ -65,9 +67,13 @@ _us_jdwp=$(_jdwp_arg "$MESH_AGENT_US_JDWP")
 _eu_jdwp=$(_jdwp_arg "$MESH_AGENT_EU_JDWP")
 _launch agent-us env HT_BIN="$HT_BIN" java $_us_jdwp \
     -DHT_BIN="$HT_BIN" -Dht.bin="$HT_BIN" \
+    -DHT_HOME="$HT_BIN" -Dht.home="$HT_BIN" \
+    -DHT_DATA="$HT_BIN/data" -Dht.data="$HT_BIN/data" \
     -jar "$MESH_AGENT_JAR" --spring.config.location=file:"$MESH_WORK/config/agent-us.yml"
 _launch agent-eu env HT_BIN="$HT_BIN" java $_eu_jdwp \
     -DHT_BIN="$HT_BIN" -Dht.bin="$HT_BIN" \
+    -DHT_HOME="$HT_BIN" -Dht.home="$HT_BIN" \
+    -DHT_DATA="$HT_BIN/data" -Dht.data="$HT_BIN/data" \
     -jar "$MESH_AGENT_JAR" --spring.config.location=file:"$MESH_WORK/config/agent-eu.yml"
 
 echo
