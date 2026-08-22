@@ -71,6 +71,12 @@ graph LR
 
 ## Bootstrap
 
+> **Verified end-to-end on macOS 15 (Sequoia).** Every subcommand in
+> this guide was actually run against a live mesh with 344k+ real Mail
+> messages, 13k iMessages, and the other four datasets registered —
+> including error paths, exit codes, `--wait --events` streaming, and
+> the schema-probe pattern in the debugging playbook.
+
 All scripts live in `hitorro-mesh-examples/scripts/`.
 
 ```bash
@@ -486,10 +492,49 @@ SELECT COUNT(*) FROM mail_messages
 SELECT sender_domain_folded, COUNT(*) FROM mail_messages GROUP BY sender_domain_folded LIMIT 1
 ```
 
-### "IllegalArgumentException: node 'X' has a sqlite source which cannot be dispatched"
+### `--distributed` on a SQLite pipeline: 202 Accepted, then FAILED with `IllegalArgumentException`
 
-Placement guard. SQLite sources are driver-local only — hit
-`/mesh/jobs/run` (no `--distributed` flag), not `/mesh/jobs/run-distributed`.
+The distributed dispatch is async — `POST /mesh/jobs/run-distributed`
+returns 202 + a jobId immediately, and the placement guard fires
+inside the pool thread. The failure surfaces on the job status a
+moment later, not as a synchronous 4xx:
+
+```bash
+./mesh-pipeline.sh run mail-register.yaml --distributed
+# → {"jobId":"job-abc","mode":"distributed"}    (immediate, 202)
+
+./mesh-pipeline.sh status job-abc --pretty
+# → state: FAILED
+#   error: IllegalArgumentException: node 'scan' has a sqlite source
+#          (path=~/Library/Mail/…) which cannot be dispatched to remote
+#          agents — Run this job via /mesh/jobs/run (driver-local) instead.
+```
+
+Fix: drop `--distributed` (or click ▶ Run instead of ▶ Run distributed
+in the UI). SQLite sources are always driver-local.
+
+### 500 Internal Server Error on `/mesh/jobs/run` — YAML parse failure
+
+Not the placement guard (that surfaces async, above). Common causes
+of a synchronous 500 from either `/run` or `/run-distributed`:
+
+- `{kind: groovy-map, script: |` in **flow-style** braces — YAML
+  block literals (`|`) can't appear inside `{…}`. Rewrite as block
+  style:
+  ```yaml
+  - kind: groovy-map
+    script: |
+      row.foo = 'bar'
+      row
+  ```
+- Unquoted string with a leading `#` — YAML treats it as a comment.
+  Quote it: `"#F0F0F0"`.
+
+Check the driver log for the exact parse position:
+
+```bash
+tail /tmp/hitorro-mesh-smoke/logs/driver.log | grep -B1 -A3 "MarkedYAMLException"
+```
 
 ### "SQLITE_IOERR: Operation not permitted"
 
