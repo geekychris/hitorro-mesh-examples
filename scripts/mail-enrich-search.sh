@@ -29,7 +29,7 @@
 #     ./mail-enrich-search.sh --limit 500              # bigger corpus
 #     ./mail-enrich-search.sh --limit 50 --wipe        # start clean
 #     ./mail-enrich-search.sh --skip-run --search NE_Person   # skip pipeline, search only
-#     ./mail-enrich-search.sh --search 'body.mls.clean.text_en_m:kubernetes'
+#     ./mail-enrich-search.sh --search 'body.mls.clean:kubernetes'
 #
 #  Requires: mesh running, driver at localhost:8085.
 # =============================================================================
