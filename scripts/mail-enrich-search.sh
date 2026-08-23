@@ -127,7 +127,11 @@ nodes:
       steps:
         - kind: groovy-map
           script: |
-            def out = [ht_type: 'mail_email', id: String.valueOf(row.id)]
+            // id is core_id (composite {domain, did, id}) via sysobject —
+            // MUST be an object, not a scalar, or the Lucene projection
+            // throws "PropaccessError: object node expected id.id".
+            def sid = String.valueOf(row.id)
+            def out = [ht_type: 'mail_email', id: [id: sid, did: sid, domain: 'mail']]
             out.title = [mls: [[lang: 'en', text: row.subject ?: '']]]
             if (row.body != null && !row.body.toString().isEmpty()) {
                 out.body = [mls: [[lang: 'en', text: row.body]]]

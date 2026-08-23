@@ -78,9 +78,14 @@ nodes:
           LIMIT $LIMIT
       steps:
         # Reshape flat SQL row → JVS mail_email tree.
+        # NOTE on id: sysobject declares id as core_id — a composite
+        # {domain, did, id} — NOT a scalar. Setting out.id to a bare
+        # string trips "PropaccessError: object node expected id.id"
+        # during Lucene projection. Wrap it as {id, did, domain}.
         - kind: groovy-map
           script: |
-            def out = [ht_type: 'mail_email', id: String.valueOf(row.id)]
+            def sid = String.valueOf(row.id)
+            def out = [ht_type: 'mail_email', id: [id: sid, did: sid, domain: 'mail']]
             out.title = [mls: [[lang: 'en', text: row.subject ?: '']]]
             if (row.body != null && !row.body.toString().isEmpty()) {
                 out.body = [mls: [[lang: 'en', text: row.body]]]
@@ -116,7 +121,7 @@ fi
 # ---------------------------------------------------------------------------
 jq -r '
   "=========================================================",
-  "id:       " + .id,
+  "id:       " + (.id.id // .id.did // "?"),
   "sender:   " + (.sender_address // "(none)"),
   "subject:  " + (.title.mls[0].text // ""),
   "",

@@ -137,7 +137,11 @@ nodes:
       steps:
         - kind: groovy-map
           script: |
-            def out = [ht_type: 'mail_email', id: String.valueOf(row.id)]
+            // id is core_id (composite {domain, did, id}) via sysobject —
+            // MUST be an object, not a scalar, or the Lucene projection
+            // errors "object node expected id.id".
+            def sid = String.valueOf(row.id)
+            def out = [ht_type: 'mail_email', id: [id: sid, did: sid, domain: 'mail']]
             out.title = [mls: [[lang: 'en', text: row.subject ?: '']]]
             if (row.body != null) out.body = [mls: [[lang: 'en', text: row.body]]]
             out
@@ -304,7 +308,11 @@ nodes:
       steps:
         - kind: groovy-map
           script: |
-            def out = [ht_type: 'mail_email', id: String.valueOf(row.id)]
+            // id is core_id (composite {domain, did, id}) via sysobject —
+            // MUST be an object, not a scalar, or the Lucene projection
+            // errors "object node expected id.id".
+            def sid = String.valueOf(row.id)
+            def out = [ht_type: 'mail_email', id: [id: sid, did: sid, domain: 'mail']]
             out.title = [mls: [[lang: 'en', text: row.subject ?: '']]]
             if (row.body != null) out.body = [mls: [[lang: 'en', text: row.body]]]
             out.sender_address = row.sender_address
@@ -400,6 +408,66 @@ Everything lives under `~/.hitorro/pipelines/` (override with the
 - Wipe an index or KV: `rm -rf ~/.hitorro/pipelines/lucene/<name>`
   (or `kv/<name>`). Next pipeline run recreates it.
 - `--wipe` on `mail-enrich-search.sh` does the two `rm -rf` for you.
+
+---
+
+## Common gotchas
+
+### `PropaccessError: object node expected id.id`
+
+Symptom: pipeline runs, per-row failures spam the driver log, some
+rows may still get indexed depending on where the failure is caught.
+The failing row's `id` is a scalar (`"1"`) where the type system
+expected an object.
+
+Cause: `sysobject.id` is `core_id`, a composite `{domain, did, id}`.
+When you write:
+
+```groovy
+out.id = String.valueOf(row.id)         // WRONG — bare string
+```
+
+the type-aware Lucene projection walks `id.id` and hits a `TextNode`
+instead of an `ObjectNode`. Fix:
+
+```groovy
+def sid = String.valueOf(row.id)
+out.id = [id: sid, did: sid, domain: 'mail']   // correct — object
+```
+
+`domain` distinguishes id namespaces across source systems (`mail`,
+`photos`, etc.) so ids don't collide when you merge indexes.
+
+### Job says `RUNNING` forever in the UI
+
+If a groovy-map or enrichment step throws while the runner's
+exception handling doesn't propagate to the job state, the UI keeps
+polling `RUNNING`. Two things to check:
+
+1. `GET /mesh/jobs/{jobId}` (skip the UI) — look at `error` and
+   `nodes[].error`.
+2. `tail /tmp/hitorro-mesh-smoke/logs/driver.log` — the real stack
+   trace lands there. Grep for `PropaccessError`, `NoClassDefFound`,
+   `ClassNotFoundException`, `IOException`.
+
+### `classpath resource not found: types/xxx.json`
+
+Your groovy uses `typeJsonResource: "classpath:/types/mail_xxx.json"`
+but the file isn't in a jar the driver loaded. Options:
+
+- Add the type JSON to `hitorro-mesh-pipelines-sqlite/src/main/resources/types/`
+  and rebuild both the sqlite module AND the driver-app fat jar
+  (Spring Boot repackages deps into `BOOT-INF/lib/`).
+- Or point at the on-disk copy:
+  `typeJsonResource: "file:/Users/chris/hitorro/config/types/mail_xxx.json"`
+  — no rebuild needed, iterate fast.
+
+### `NoClassDefFoundError: Iso639Table`
+
+`jvs-enrich` needs `HT_HOME` + `HT_DATA` env vars set so language
+tables load. `mesh-up.sh` exports both — if you're running the
+driver JVM by hand, `export HT_HOME=$(pwd) HT_DATA=$HT_HOME/data`
+before starting.
 
 ---
 
