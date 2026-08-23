@@ -62,13 +62,18 @@ while [ $# -gt 0 ]; do
 done
 
 # Default search set that exercises every field projection kind — swap
-# in your own via --search 'field:value' (repeatable).
+# in your own via --search 'field:value' (repeatable). Field paths are
+# the LOGICAL JVS paths; the search service uses the JVS type sidecar
+# written by the jvs-lucene sink to expand them to the underlying
+# Lucene projected names (e.g. body.mls.segmented_ner →
+# body.mls.segmented_ner.textmarkup_en_m). Physical names still parse
+# unchanged for backward compat.
 if [ ${#SEARCHES[@]} -eq 0 ]; then
     SEARCHES=(
-        'body.mls.segmented_ner.textmarkup_en_m:NE_Person'          # NER type filter (only works if bracket format is right)
-        'body.mls.segmented_ner.textmarkup_en_m:NE_Location'
-        'body.mls.clean.text_en_m:meeting'                          # full-text over cleaned body
-        'title.mls.clean.text_en_m:invoice'                         # full-text over subject
+        'body.mls.segmented_ner:NE_Person'          # NER type filter
+        'body.mls.segmented_ner:NE_Location'
+        'body.mls.clean:meeting'                    # full-text over cleaned body
+        'title.mls.clean:invoice'                   # full-text over subject
     )
 fi
 
