@@ -29,6 +29,7 @@ _stop() {
 _stop agent-eu
 _stop agent-us
 _stop driver
+_stop fleet-retrieval
 _stop nats
 
 echo "mesh is down. logs remain under $MESH_LOGS."

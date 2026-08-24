@@ -167,7 +167,11 @@ nodes:
         # $DRIVER/mesh/kv/$KV_NAME/<id>.
         - kind: kvstore
           name: $KV_NAME
-          keyExpr: id
+          # keyExpr must resolve to a scalar. Our reshape sets id as a
+          # composite core_id {id, did, domain}, so navigate to id.id
+          # for the string key. Using bare "id" here silently stored
+          # every row under the empty-string key (last-write-wins).
+          keyExpr: id.id
 YAML
 
     echo "--- running pipeline (limit=$LIMIT where=$WHERE) → lucene=$INDEX_NAME kv=$KV_NAME ---" >&2

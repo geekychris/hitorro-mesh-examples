@@ -52,13 +52,39 @@ _wait_tcp() {
 _launch nats "$MESH_NATS_BIN" -p "$MESH_NATS_PORT"
 _wait_tcp localhost "$MESH_NATS_PORT" nats
 
-# 2. Driver — with HT_BIN so the type system + LuceneFieldTypes resolve
+# 2. fleet-retrieval (optional) — provides POST /api/retrieval/execute
+# with the full JVS-query pipeline (search + fetch + fixup + page +
+# summarize) plus GET /api/retrieval/documents/{index}/{key} for KV.
+# Runs in shared mode against the mesh's pipeline output so it picks
+# up every ~/.hitorro/pipelines/lucene/ + kv/ directory the driver
+# writes. Set MESH_FLEET_RETRIEVAL=0 to skip when you don't need
+# stage support. Default port avoids :8090 which is commonly squatted
+# by other local dev tools (e.g. Claude API server).
+: "${MESH_FLEET_RETRIEVAL:=1}"
+: "${MESH_FLEET_RETRIEVAL_PORT:=8095}"
+: "${MESH_FLEET_RETRIEVAL_JAR:=$MESH_ROOT/hitorro-fleet-retrieval/target/hitorro-fleet-retrieval-3.0.1.jar}"
+DRIVER_FLEET_ENV=""
+if [ "$MESH_FLEET_RETRIEVAL" = "1" ] && [ -f "$MESH_FLEET_RETRIEVAL_JAR" ]; then
+    _launch fleet-retrieval env HT_BIN="$HT_BIN" java \
+        -DHT_BIN="$HT_BIN" -Dht.bin="$HT_BIN" \
+        -jar "$MESH_FLEET_RETRIEVAL_JAR" \
+        --server.port="$MESH_FLEET_RETRIEVAL_PORT" \
+        --hitorro.fleet.retrieval.mode=shared \
+        --hitorro.fleet.retrieval.pipelines-home="$HOME/.hitorro/pipelines"
+    _wait_tcp localhost "$MESH_FLEET_RETRIEVAL_PORT" fleet-retrieval 45
+    # Pass the endpoint to the driver via a Spring property so its
+    # /mesh/retrieval/federated/* controllers can relay to it.
+    DRIVER_FLEET_ENV="-Dhitorro.fleet.endpoints=http://localhost:$MESH_FLEET_RETRIEVAL_PORT"
+fi
+
+# 3. Driver — with HT_BIN so the type system + LuceneFieldTypes resolve
 # their config, and JDWP on MESH_DRIVER_JDWP so IntelliJ can attach.
 _driver_jdwp=$(_jdwp_arg "$MESH_DRIVER_JDWP")
 _launch driver env HT_BIN="$HT_BIN" java $_driver_jdwp \
     -DHT_BIN="$HT_BIN" -Dht.bin="$HT_BIN" \
     -DHT_HOME="$HT_BIN" -Dht.home="$HT_BIN" \
     -DHT_DATA="$HT_BIN/data" -Dht.data="$HT_BIN/data" \
+    $DRIVER_FLEET_ENV \
     -jar "$MESH_DRIVER_JAR" --spring.config.location=file:"$MESH_WORK/config/driver.yml"
 _wait_tcp localhost "$MESH_DRIVER_PORT" driver 60
 
