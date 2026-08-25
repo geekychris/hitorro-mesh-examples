@@ -26,6 +26,7 @@ _stop() {
 }
 
 # reverse order of start
+_stop search-ui
 _stop agent-eu
 _stop agent-us
 _stop driver

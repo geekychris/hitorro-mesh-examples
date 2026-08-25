@@ -102,6 +102,22 @@ _launch agent-eu env HT_BIN="$HT_BIN" java $_eu_jdwp \
     -DHT_DATA="$HT_BIN/data" -Dht.data="$HT_BIN/data" \
     -jar "$MESH_AGENT_JAR" --spring.config.location=file:"$MESH_WORK/config/agent-eu.yml"
 
+# 4. hitorro-search-ui (optional) — Spring Boot BFF + bundled React SPA
+# at :8100. Talks to fleet-retrieval on :8095 via same-host localhost.
+# Skip with MESH_SEARCH_UI=0. Requires `mvn install` in
+# hitorro-search-ui/ so the fat JAR exists.
+: "${MESH_SEARCH_UI:=1}"
+: "${MESH_SEARCH_UI_PORT:=8100}"
+: "${MESH_SEARCH_UI_JAR:=$MESH_ROOT/hitorro-search-ui/backend/target/hitorro-search-ui-3.0.1.jar}"
+if [ "$MESH_SEARCH_UI" = "1" ] && [ -f "$MESH_SEARCH_UI_JAR" ]; then
+    _launch search-ui env HT_BIN="$HT_BIN" java \
+        -DHT_BIN="$HT_BIN" -Dht.bin="$HT_BIN" \
+        -jar "$MESH_SEARCH_UI_JAR" \
+        --server.port="$MESH_SEARCH_UI_PORT" \
+        --hitorro.searchui.fleet.base-url="http://localhost:${MESH_FLEET_RETRIEVAL_PORT:-8095}"
+    _wait_tcp localhost "$MESH_SEARCH_UI_PORT" search-ui 45
+fi
+
 echo
 echo "mesh is up. try:"
 echo "  ./mesh-status.sh"
