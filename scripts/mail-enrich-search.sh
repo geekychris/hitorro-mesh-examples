@@ -148,8 +148,16 @@ nodes:
             out.read           = row.read == 1
             out.flagged        = row.flagged == 1
             out.size_bytes     = row.size_bytes
+            // Emit date_received at the TOP LEVEL — mail_email now
+            // declares it as core_date / index.method: date, so the
+            // jvs-lucene sink writes NumericDocValues that the search
+            // UI's SortMenu picks up as a sortable "date" field. Keep
+            // the nested times.date_received copy for anything that
+            // already reads it via the sysobject.times path.
             if (row.received_ts != null) {
-                out.times = [date_received: (long)(row.received_ts * 1000L)]
+                def receivedMs = (long)(row.received_ts * 1000L)
+                out.date_received = receivedMs
+                out.times = [date_received: receivedMs]
             }
             out
         - kind: jvs-enrich
