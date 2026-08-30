@@ -4,6 +4,21 @@ Boots a real Hitorro Mesh on your laptop: `nats-server` + one driver + two
 agents, each in its own JVM. Uses the actual production fat JARs (same
 ones you'd deploy to Orion or Kubernetes), just pointed at localhost.
 
+## Where to start
+
+If you've never written a mesh pipeline, read
+[**authoring-a-pipeline.md**](../../hitorro-mesh-pipelines/docs/authoring-a-pipeline.md)
+first — a hands-on walkthrough of source → steps → sinks and the
+YAML/Groovy DSL. Then come back here to actually run one.
+
+Other high-value guides:
+
+- [pipeline-lifecycles.md](../../hitorro-mesh-pipelines/docs/pipeline-lifecycles.md) — batch vs continuous, Kafka/NATS resume model
+- [scheduling.md](../../hitorro-mesh-pipelines/docs/scheduling.md) — cron/interval runs with durable checkpoints
+- [streaming-sql.md](../../hitorro-mesh-pipelines/docs/streaming-sql.md) — ad-hoc live SQL over Kafka/NATS via SSE
+- [MAIL_ENRICHMENT_TUTORIAL.md](../docs/MAIL_ENRICHMENT_TUTORIAL.md) — end-to-end: SQLite Mail → JVS enrich → Lucene + search
+- [CLI_USERGUIDE.md](../docs/CLI_USERGUIDE.md) — full `mesh-pipeline.sh` reference
+
 ## Prereqs
 
 1. **Java 21** on `$PATH`.
@@ -43,6 +58,33 @@ cd hitorro-mesh-examples/scripts
 Or all-in-one, self-asserting:
 ```bash
 ./mesh-smoke.sh    # inits, boots, queries, checks, tears down. Exit 0 = pass.
+```
+
+### The CLI wrappers at a glance
+
+| script | purpose | docs |
+|---|---|---|
+| `mesh-pipeline.sh` | Run/list/cancel pipeline jobs, tail progress events, query registered tables | [CLI_USERGUIDE.md](../docs/CLI_USERGUIDE.md) |
+| `mesh-schedule.sh` | Manage durable schedules (cron/interval + checkpoint) | [scheduling.md](../../hitorro-mesh-pipelines/docs/scheduling.md) |
+| `mesh-stream-query.sh` | Subscribe to a streaming SQL query over SSE | [streaming-sql.md](../../hitorro-mesh-pipelines/docs/streaming-sql.md) |
+| `mesh-query.sh` | Submit a one-shot batch SQL query | — |
+| `mesh-status.sh` | Show live driver + agents + registered tables | — |
+
+Example — run a bundled pipeline and watch its progress live:
+```bash
+./mesh-pipeline.sh run-bundled countries-triple-sink --wait --events
+```
+
+Example — schedule an hourly Mac Mail ingest with a persistent checkpoint:
+```bash
+./mesh-schedule.sh create mac-mail-hourly \
+    ../../hitorro-mesh-pipelines/docs/examples/mac-mail-hourly-time.yaml \
+    --cron '0 0 * * * *' --catchup-grace 60s
+```
+
+Example — live-tail matching rows from a Kafka topic (registered as `events`):
+```bash
+./mesh-stream-query.sh "SELECT id, level FROM events WHERE level='WARN'"
 ```
 
 ### TLS smoke test
@@ -124,7 +166,8 @@ Full list is in `env.sh`.
 * **TLS / auth** — plain TCP to `localhost:4222`. Production deployments
   configure creds via `hitorro.mesh.driver.nats-url` and
   `hitorro.mesh.agent.nats-url`.
-* **Kafka / edge sources** — the mesh currently reads NDJSON files. Kafka
-  and other edge sources plug in via the existing `hitorro-streams-kafka`
-  and `hitorro-streams-nats` modules; see `docs/mesh-edge-sources.md` when
-  it lands.
+* **Kafka broker** — the mesh has first-class Kafka source + sink
+  (`kind: kafka` in pipelines; `POST /mesh/queries/register-streaming`
+  for live SQL) but you supply the broker. For local testing, Redpanda
+  or a single-node Kafka in Docker works out of the box; point
+  `bootstrap-servers` at it.

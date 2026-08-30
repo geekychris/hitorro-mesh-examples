@@ -241,9 +241,52 @@ Referenced by `typeJsonResource: "classpath:/types/..."`:
   SQL queries against the registered mail/messages/safari/photos/
   screentime tables + cross-DB correlations + mesh-SQL quirks
 - `hitorro-mesh-pipelines/README.md` — DAG model + phase status
+- `hitorro-mesh-pipelines/docs/authoring-a-pipeline.md` — write your first pipeline
+- `hitorro-mesh-pipelines/docs/pipeline-lifecycles.md` — batch vs continuous
+- `hitorro-mesh-pipelines/docs/scheduling.md` — cron + persistent checkpoints
+- `hitorro-mesh-pipelines/docs/streaming-sql.md` — live SQL over Kafka/NATS (SSE)
 - `hitorro-mesh-examples/docs/CLI_USERGUIDE.md` — this file
 
 ---
+
+## Shell CLI: `mesh-schedule.sh`
+
+Manage durable schedules. Every schedule = one job spec + a cron or
+interval + a persistent checkpoint that survives driver restarts.
+
+```bash
+./mesh-schedule.sh list
+./mesh-schedule.sh create mac-mail-hourly \
+    ../../hitorro-mesh-pipelines/docs/examples/mac-mail-hourly-time.yaml \
+    --cron '0 0 * * * *' --catchup-grace 60s
+./mesh-schedule.sh run-now mac-mail-hourly
+./mesh-schedule.sh pause  mac-mail-hourly
+./mesh-schedule.sh resume mac-mail-hourly
+./mesh-schedule.sh checkpoint get mac-mail-hourly
+./mesh-schedule.sh checkpoint set mac-mail-hourly '2026-08-01T00:00:00Z'
+./mesh-schedule.sh delete mac-mail-hourly
+```
+
+Schedule runs appear in the same `/mesh/jobs` listing as ad-hoc
+submissions — the Jobs UI tab shows them with a `▪ batch` /
+`● continuous` lifecycle badge. Full reference:
+[scheduling.md](../../hitorro-mesh-pipelines/docs/scheduling.md).
+
+## Shell CLI: `mesh-stream-query.sh`
+
+Streaming SQL over a Kafka/NATS-backed table. Prints one JSON row
+per received message to stdout; Ctrl-C stops. Register the table
+first (see [streaming-sql.md](../../hitorro-mesh-pipelines/docs/streaming-sql.md)),
+then:
+
+```bash
+./mesh-stream-query.sh "SELECT id, level FROM events WHERE level='WARN'"
+./mesh-stream-query.sh "SELECT * FROM events" --pretty
+```
+
+Under the hood: a single-line HTTP GET to
+`/mesh/queries/stream?sql=…`, SSE-decoded row-by-row. Great for
+`| jq`, `| head -20`, or piping into a webhook forwarder.
 
 ## Common workflows
 

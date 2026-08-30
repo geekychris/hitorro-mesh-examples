@@ -1,5 +1,14 @@
 # Mail → JVS Enrichment → Search — Hands-on Tutorial
 
+> **New to mesh pipelines?** Read
+> [authoring-a-pipeline.md](../../hitorro-mesh-pipelines/docs/authoring-a-pipeline.md)
+> first — it covers the source → steps → sinks model this tutorial
+> builds on. For the live-query-over-Kafka case (as opposed to this
+> batch-ingest-into-index case), see
+> [STREAMING_SQL_TUTORIAL.md](./STREAMING_SQL_TUTORIAL.md). For running
+> this ingest on a schedule with a persistent checkpoint, see
+> [scheduling.md](../../hitorro-mesh-pipelines/docs/scheduling.md).
+
 Two shipped shell scripts that walk you through the full type-aware
 enrichment pipeline against your local Apple Mail database. Every bash
 example is copy-pasteable; every REST call has the equivalent `curl`
