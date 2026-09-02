@@ -1,0 +1,20 @@
+{
+  "name": "hitorro-mesh-aws-cdk",
+  "version": "0.1.0",
+  "private": true,
+  "bin": { "mesh-aws": "bin/mesh-aws.js" },
+  "scripts": {
+    "build":  "tsc",
+    "watch":  "tsc -w",
+    "cdk":    "cdk"
+  },
+  "devDependencies": {
+    "@types/node": "^20.14.0",
+    "aws-cdk":     "^2.147.0",
+    "typescript":  "^5.5.3"
+  },
+  "dependencies": {
+    "aws-cdk-lib": "^2.147.0",
+    "constructs":  "^10.3.0"
+  }
+}

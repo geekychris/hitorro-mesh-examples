@@ -1,0 +1,26 @@
+{
+  "app": "npx ts-node --prefer-ts-exts bin/mesh-aws.ts",
+  "watch": {
+    "include": ["**"],
+    "exclude": ["README.md", "cdk.out", "node_modules", "*.d.ts", "*.js"]
+  },
+  "context": {
+    "@aws-cdk/aws-lambda:recognizeLayerVersion": true,
+    "@aws-cdk/core:checkSecretUsage": true,
+    "@aws-cdk/aws-iam:minimizePolicies": true,
+    "@aws-cdk/core:target-partitions": ["aws", "aws-cn"],
+
+    "env":         "dev",
+    "region":      "us-east-1",
+    "imageTag":    "latest",
+    "singleAz":    true,
+    "meshAgents":  2,
+    "driverMem":   1024,
+    "agentMem":    2048,
+    "retrievalMem": 1024,
+    "dmsMem":      1024,
+    "natsMem":     512,
+    "enableRetrieval": true,
+    "enableDms":       true
+  }
+}
