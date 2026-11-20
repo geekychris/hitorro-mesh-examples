@@ -3,7 +3,7 @@
  */
 package com.hitorro.mesh.examples;
 
-import com.fasterxml.jackson.databind.JsonNode;
+import tools.jackson.databind.JsonNode;
 import com.hitorro.jsontypesystem.JVS;
 import com.hitorro.jsontypesystem.Type;
 import com.hitorro.mesh.InMemoryMeshTransport;
@@ -25,6 +25,7 @@ import java.util.concurrent.TimeUnit;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import com.hitorro.util.json.JsonValues;
 
 /**
  * Phase 5b: distributed ORDER BY. Agents sort locally via jvssql; driver does
@@ -41,7 +42,7 @@ class OrderByTest {
                 assertThat(rows).hasSize(9);
                 long prev = Long.MIN_VALUE;
                 for (JsonNode r : rows) {
-                    long v = r.get("size_kb").asLong();
+                    long v = JsonValues.asLong(r.get("size_kb"));
                     assertThat(v).isGreaterThanOrEqualTo(prev);
                     prev = v;
                 }
@@ -56,8 +57,8 @@ class OrderByTest {
                     "SELECT id, size_kb FROM docs ORDER BY size_kb DESC")) {
                 var rows = h.collect(5, TimeUnit.SECONDS);
                 assertThat(rows).hasSize(9);
-                assertThat(rows.get(0).get("id").asText()).isEqualTo("us-3");  // 640, largest
-                assertThat(rows.get(rows.size() - 1).get("id").asText()).isEqualTo("eu-3");  // 45, smallest
+                assertThat(JsonValues.asText(rows.get(0).get("id"))).isEqualTo("us-3");  // 640, largest
+                assertThat(JsonValues.asText(rows.get(rows.size() - 1).get("id"))).isEqualTo("eu-3");  // 45, smallest
             }
         }
     }
@@ -70,9 +71,9 @@ class OrderByTest {
                 var rows = h.collect(5, TimeUnit.SECONDS);
                 assertThat(rows).hasSize(5);
                 // en size_kb DESC: us-3 (640), ap-3 (320), us-1 (210), us-2 (84), eu-3 (45)
-                assertThat(rows.get(0).get("id").asText()).isEqualTo("us-3");
-                assertThat(rows.get(1).get("id").asText()).isEqualTo("ap-3");
-                assertThat(rows.get(2).get("id").asText()).isEqualTo("us-1");
+                assertThat(JsonValues.asText(rows.get(0).get("id"))).isEqualTo("us-3");
+                assertThat(JsonValues.asText(rows.get(1).get("id"))).isEqualTo("ap-3");
+                assertThat(JsonValues.asText(rows.get(2).get("id"))).isEqualTo("us-1");
             }
         }
     }
@@ -85,9 +86,9 @@ class OrderByTest {
                 var rows = h.collect(5, TimeUnit.SECONDS);
                 assertThat(rows).hasSize(3);
                 // Top-3 largest: us-3 (640), eu-1 (512), ap-3 (320)
-                assertThat(rows.get(0).get("id").asText()).isEqualTo("us-3");
-                assertThat(rows.get(1).get("id").asText()).isEqualTo("eu-1");
-                assertThat(rows.get(2).get("id").asText()).isEqualTo("ap-3");
+                assertThat(JsonValues.asText(rows.get(0).get("id"))).isEqualTo("us-3");
+                assertThat(JsonValues.asText(rows.get(1).get("id"))).isEqualTo("eu-1");
+                assertThat(JsonValues.asText(rows.get(2).get("id"))).isEqualTo("ap-3");
             }
         }
     }
@@ -100,13 +101,13 @@ class OrderByTest {
                 var rows = h.collect(5, TimeUnit.SECONDS);
                 assertThat(rows).hasSize(9);
                 // First rows are lang=de (alphabetically first).
-                assertThat(rows.get(0).get("lang").asText()).isEqualTo("de");
+                assertThat(JsonValues.asText(rows.get(0).get("lang"))).isEqualTo("de");
                 // Last rows are lang=ko (alphabetically last among en/fr/de/ja/ko).
-                assertThat(rows.get(rows.size() - 1).get("lang").asText()).isEqualTo("ko");
+                assertThat(JsonValues.asText(rows.get(rows.size() - 1).get("lang"))).isEqualTo("ko");
                 // Within lang=en (rows 1..5), size_kb should be descending: 640, 320, 210, 84, 45.
                 List<Long> enSizes = new ArrayList<>();
                 for (JsonNode r : rows) {
-                    if ("en".equals(r.get("lang").asText())) enSizes.add(r.get("size_kb").asLong());
+                    if ("en".equals(JsonValues.asText(r.get("lang")))) enSizes.add(JsonValues.asLong(r.get("size_kb")));
                 }
                 assertThat(enSizes).containsExactly(640L, 320L, 210L, 84L, 45L);
             }
@@ -119,7 +120,7 @@ class OrderByTest {
             try (var h = c.driver().dispatcher().submit(
                     "SELECT id FROM docs ORDER BY id")) {
                 var rows = h.collect(5, TimeUnit.SECONDS);
-                List<String> ids = rows.stream().map(r -> r.get("id").asText()).toList();
+                List<String> ids = rows.stream().map(r -> JsonValues.asText(r.get("id"))).toList();
                 // ap-1, ap-2, ap-3, eu-1, eu-2, eu-3, us-1, us-2, us-3
                 assertThat(ids).containsExactly(
                         "ap-1", "ap-2", "ap-3", "eu-1", "eu-2", "eu-3", "us-1", "us-2", "us-3");
@@ -134,7 +135,7 @@ class OrderByTest {
                     "SELECT lang, COUNT(*) FROM docs GROUP BY lang ORDER BY lang")) {
                 var rows = h.collect(5, TimeUnit.SECONDS);
                 assertThat(rows).hasSize(5);
-                List<String> langs = rows.stream().map(r -> r.get("lang").asText()).toList();
+                List<String> langs = rows.stream().map(r -> JsonValues.asText(r.get("lang"))).toList();
                 // Alphabetical: de, en, fr, ja, ko
                 assertThat(langs).containsExactly("de", "en", "fr", "ja", "ko");
             }
@@ -150,10 +151,10 @@ class OrderByTest {
                 var rows = h.collect(5, TimeUnit.SECONDS);
                 assertThat(rows).hasSize(3);
                 // Top-3 by count: en=5, then any three of {fr, de, ja, ko}=1
-                assertThat(rows.get(0).get("lang").asText()).isEqualTo("en");
-                assertThat(rows.get(0).get("c0").asLong()).isEqualTo(5L);
-                assertThat(rows.get(1).get("c0").asLong()).isEqualTo(1L);
-                assertThat(rows.get(2).get("c0").asLong()).isEqualTo(1L);
+                assertThat(JsonValues.asText(rows.get(0).get("lang"))).isEqualTo("en");
+                assertThat(JsonValues.asLong(rows.get(0).get("c0"))).isEqualTo(5L);
+                assertThat(JsonValues.asLong(rows.get(1).get("c0"))).isEqualTo(1L);
+                assertThat(JsonValues.asLong(rows.get(2).get("c0"))).isEqualTo(1L);
             }
         }
     }

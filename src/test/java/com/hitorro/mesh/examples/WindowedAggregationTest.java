@@ -3,8 +3,9 @@
  */
 package com.hitorro.mesh.examples;
 
-import com.fasterxml.jackson.databind.JsonNode;
-import com.fasterxml.jackson.databind.ObjectMapper;
+import tools.jackson.databind.JsonNode;
+import tools.jackson.databind.ObjectMapper;
+import com.hitorro.util.json.JsonMappers;
 import com.hitorro.jsontypesystem.JVS;
 import com.hitorro.jsontypesystem.Type;
 import com.hitorro.mesh.InMemoryMeshTransport;
@@ -27,6 +28,7 @@ import java.util.Set;
 import java.util.concurrent.TimeUnit;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import com.hitorro.util.json.JsonValues;
 
 /**
  * Phase 6d: windowed aggregation via jvssql's {@code WIN_START(...)}.
@@ -43,7 +45,7 @@ import static org.assertj.core.api.Assertions.assertThat;
  */
 class WindowedAggregationTest {
 
-    private static final ObjectMapper MAPPER = new ObjectMapper();
+    private static final ObjectMapper MAPPER = JsonMappers.json();
     private static final long HOUR_MS = 3_600_000L;
 
     @Test
@@ -58,7 +60,7 @@ class WindowedAggregationTest {
                 //   hour 1 (3.6M..7.2M): 2 events (us: 1, eu: 1)
                 //   hour 2 (7.2M..10.8M): 2 events (us: 0, eu: 2)
                 Map<Long, Long> byWindow = new HashMap<>();
-                for (JsonNode r : rows) byWindow.put(r.get("g0").asLong(), r.get("c0").asLong());
+                for (JsonNode r : rows) byWindow.put(JsonValues.asLong(r.get("g0")), JsonValues.asLong(r.get("c0")));
                 assertThat(byWindow).containsExactlyInAnyOrderEntriesOf(Map.of(
                         0L,          4L,
                         HOUR_MS,     2L,
@@ -78,8 +80,8 @@ class WindowedAggregationTest {
                 // original name; function-call col gets auto-alias g0.
                 Map<String, Long> byKey = new HashMap<>();
                 for (JsonNode r : rows) {
-                    String k = r.get("g0").asLong() + "|" + r.get("dept").asText();
-                    byKey.put(k, r.get("c0").asLong());
+                    String k = JsonValues.asLong(r.get("g0")) + "|" + JsonValues.asText(r.get("dept"));
+                    byKey.put(k, JsonValues.asLong(r.get("c0")));
                 }
                 // hour 0: eng × 3 (us-1,us-2,eu-1), sales × 1 (us-3)
                 // hour 1: eng × 2 (us-4, eu-2)
@@ -103,9 +105,9 @@ class WindowedAggregationTest {
                   + "ORDER BY g0")) {
                 var rows = h.collect(5, TimeUnit.SECONDS);
                 assertThat(rows).hasSize(3);
-                assertThat(rows.get(0).get("g0").asLong()).isEqualTo(0L);
-                assertThat(rows.get(1).get("g0").asLong()).isEqualTo(HOUR_MS);
-                assertThat(rows.get(2).get("g0").asLong()).isEqualTo(2 * HOUR_MS);
+                assertThat(JsonValues.asLong(rows.get(0).get("g0"))).isEqualTo(0L);
+                assertThat(JsonValues.asLong(rows.get(1).get("g0"))).isEqualTo(HOUR_MS);
+                assertThat(JsonValues.asLong(rows.get(2).get("g0"))).isEqualTo(2 * HOUR_MS);
             }
         }
     }

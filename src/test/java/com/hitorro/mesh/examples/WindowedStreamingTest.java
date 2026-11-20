@@ -3,8 +3,9 @@
  */
 package com.hitorro.mesh.examples;
 
-import com.fasterxml.jackson.databind.JsonNode;
-import com.fasterxml.jackson.databind.ObjectMapper;
+import tools.jackson.databind.JsonNode;
+import tools.jackson.databind.ObjectMapper;
+import com.hitorro.util.json.JsonMappers;
 import com.hitorro.jsontypesystem.JVS;
 import com.hitorro.jsontypesystem.Type;
 import com.hitorro.jvssql.config.StreamConfig;
@@ -25,6 +26,7 @@ import java.util.Set;
 import java.util.concurrent.TimeUnit;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import com.hitorro.util.json.JsonValues;
 
 /**
  * Phase 6d.1: watermark-driven windowed streaming aggregate.
@@ -55,7 +57,7 @@ import static org.assertj.core.api.Assertions.assertThat;
  */
 class WindowedStreamingTest {
 
-    private static final ObjectMapper MAPPER = new ObjectMapper();
+    private static final ObjectMapper MAPPER = JsonMappers.json();
     private static final long WINDOW_MS = 60_000L;   // 1-minute tumbling window
 
     @Test
@@ -84,24 +86,24 @@ class WindowedStreamingTest {
                 // for the stream to end.
                 JsonNode w0 = h.nextRow(3, TimeUnit.SECONDS);
                 assertThat(w0).as("closed window 0 should emit as soon as watermark passes 60s").isNotNull();
-                assertThat(w0.get("ws").asLong()).isEqualTo(0L);
-                assertThat(w0.get("n").asLong()).isEqualTo(2L);
+                assertThat(JsonValues.asLong(w0.get("ws"))).isEqualTo(0L);
+                assertThat(JsonValues.asLong(w0.get("n"))).isEqualTo(2L);
 
                 // Push an event in window 2 (event_time = 130s) → closes window 1.
                 c.table().pushRow(event(130_000L, "eng"));
 
                 JsonNode w1 = h.nextRow(3, TimeUnit.SECONDS);
                 assertThat(w1).as("closed window 1 should emit after 130s row").isNotNull();
-                assertThat(w1.get("ws").asLong()).isEqualTo(60_000L);
-                assertThat(w1.get("n").asLong()).isEqualTo(1L);
+                assertThat(JsonValues.asLong(w1.get("ws"))).isEqualTo(60_000L);
+                assertThat(JsonValues.asLong(w1.get("n"))).isEqualTo(1L);
 
                 // Terminate the stream — jvssql flushes any remaining open
                 // windows (window 2 with the 130s event) then EOS.
                 c.table().stop();
                 JsonNode w2 = h.nextRow(3, TimeUnit.SECONDS);
                 assertThat(w2).isNotNull();
-                assertThat(w2.get("ws").asLong()).isEqualTo(120_000L);
-                assertThat(w2.get("n").asLong()).isEqualTo(1L);
+                assertThat(JsonValues.asLong(w2.get("ws"))).isEqualTo(120_000L);
+                assertThat(JsonValues.asLong(w2.get("n"))).isEqualTo(1L);
 
                 assertThat(h.nextRow(2, TimeUnit.SECONDS)).as("no more rows after stream stops").isNull();
             }
@@ -139,8 +141,8 @@ class WindowedStreamingTest {
                 // preserves them through the combine SQL.
                 JsonNode w0 = h.nextRow(3, TimeUnit.SECONDS);
                 assertThat(w0).as("combined window-0 row should emit once both partitions advance").isNotNull();
-                assertThat(w0.get("ws").asLong()).isEqualTo(0L);
-                assertThat(w0.get("n").asLong()).as("2 events from p1 + 1 from p2").isEqualTo(3L);
+                assertThat(JsonValues.asLong(w0.get("ws"))).isEqualTo(0L);
+                assertThat(JsonValues.asLong(w0.get("n"))).as("2 events from p1 + 1 from p2").isEqualTo(3L);
 
                 // Terminate both streams → any remaining buffered windows flush.
                 c.p1().stop();
@@ -150,8 +152,8 @@ class WindowedStreamingTest {
                 // On EOS both partitions' remaining open windows are flushed.
                 JsonNode w1 = h.nextRow(3, TimeUnit.SECONDS);
                 assertThat(w1).isNotNull();
-                assertThat(w1.get("ws").asLong()).isEqualTo(60_000L);
-                assertThat(w1.get("n").asLong()).as("1 event per partition in window 1").isEqualTo(2L);
+                assertThat(JsonValues.asLong(w1.get("ws"))).isEqualTo(60_000L);
+                assertThat(JsonValues.asLong(w1.get("n"))).as("1 event per partition in window 1").isEqualTo(2L);
 
                 assertThat(h.nextRow(2, TimeUnit.SECONDS)).as("no more rows after both streams stopped").isNull();
             }
@@ -195,8 +197,8 @@ class WindowedStreamingTest {
                 JsonNode w0 = h.nextRow(3, TimeUnit.SECONDS);
                 assertThat(w0).as("window 0 should close via p2's watermark heartbeat, "
                         + "even though p2 has no events in window 0").isNotNull();
-                assertThat(w0.get("ws").asLong()).isEqualTo(0L);
-                assertThat(w0.get("n").asLong()).as("only p1's 2 events, p2 contributed 0").isEqualTo(2L);
+                assertThat(JsonValues.asLong(w0.get("ws"))).isEqualTo(0L);
+                assertThat(JsonValues.asLong(w0.get("n"))).as("only p1's 2 events, p2 contributed 0").isEqualTo(2L);
 
                 c.p1().stop();
                 c.p2().stop();
@@ -208,8 +210,8 @@ class WindowedStreamingTest {
                 // Both partitions contribute 1 row for window 480_000 → combined 2.
                 JsonNode w480 = h.nextRow(3, TimeUnit.SECONDS);
                 assertThat(w480).isNotNull();
-                assertThat(w480.get("ws").asLong()).isEqualTo(480_000L);
-                assertThat(w480.get("n").asLong()).isEqualTo(2L);
+                assertThat(JsonValues.asLong(w480.get("ws"))).isEqualTo(480_000L);
+                assertThat(JsonValues.asLong(w480.get("n"))).isEqualTo(2L);
 
                 assertThat(h.nextRow(2, TimeUnit.SECONDS)).isNull();
             }

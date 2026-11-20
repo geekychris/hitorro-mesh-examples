@@ -3,8 +3,9 @@
  */
 package com.hitorro.mesh.examples;
 
-import com.fasterxml.jackson.databind.JsonNode;
-import com.fasterxml.jackson.databind.ObjectMapper;
+import tools.jackson.databind.JsonNode;
+import tools.jackson.databind.ObjectMapper;
+import com.hitorro.util.json.JsonMappers;
 import com.hitorro.jsontypesystem.JVS;
 import com.hitorro.jsontypesystem.Type;
 import com.hitorro.mesh.InMemoryMeshTransport;
@@ -29,6 +30,7 @@ import java.util.concurrent.TimeUnit;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import com.hitorro.util.json.JsonValues;
 
 /**
  * Phase-2 end-to-end tests: {@code GROUP BY} + associative aggregates
@@ -37,7 +39,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
  */
 class DistributedAggregateTest {
 
-    private static final ObjectMapper MAPPER = new ObjectMapper();
+    private static final ObjectMapper MAPPER = JsonMappers.json();
 
     @Test
     void countByGroup_combinesAcrossPartitions() throws Exception {
@@ -54,7 +56,7 @@ class DistributedAggregateTest {
                 //   ko × 1 (ap-2)
                 Map<String, Long> byLang = new HashMap<>();
                 for (JsonNode r : rows) {
-                    byLang.put(r.get("lang").asText(), r.get("c0").asLong());
+                    byLang.put(JsonValues.asText(r.get("lang")), JsonValues.asLong(r.get("c0")));
                 }
                 assertThat(byLang).containsExactlyInAnyOrderEntriesOf(Map.of(
                         "en", 5L, "fr", 1L, "de", 1L, "ja", 1L, "ko", 1L));
@@ -70,7 +72,7 @@ class DistributedAggregateTest {
                 var rows = h.collect(5, TimeUnit.SECONDS);
                 assertThat(rows).hasSize(1);
                 // en size_kb: 210 + 84 + 640 + 45 + 320 = 1299
-                assertThat(rows.get(0).get("c0").asLong()).isEqualTo(1299L);
+                assertThat(JsonValues.asLong(rows.get(0).get("c0"))).isEqualTo(1299L);
             }
         }
     }
@@ -83,8 +85,8 @@ class DistributedAggregateTest {
                 var rows = h.collect(5, TimeUnit.SECONDS);
                 Map<String, long[]> byLang = new HashMap<>();
                 for (JsonNode r : rows) {
-                    byLang.put(r.get("lang").asText(),
-                            new long[]{ r.get("c0").asLong(), r.get("c1").asLong() });
+                    byLang.put(JsonValues.asText(r.get("lang")),
+                            new long[]{ JsonValues.asLong(r.get("c0")), JsonValues.asLong(r.get("c1")) });
                 }
                 // en: min(45, 84, 210, 320, 640) = 45,  max = 640
                 assertThat(byLang.get("en")).containsExactly(45L, 640L);
@@ -102,9 +104,9 @@ class DistributedAggregateTest {
                 var rows = h.collect(5, TimeUnit.SECONDS);
                 assertThat(rows).hasSize(1);
                 var r = rows.get(0);
-                assertThat(r.get("lang").asText()).isEqualTo("en");
-                assertThat(r.get("c0").asLong()).isEqualTo(5L);       // COUNT(*)
-                assertThat(r.get("c1").asLong()).isEqualTo(1299L);    // SUM(size_kb)
+                assertThat(JsonValues.asText(r.get("lang"))).isEqualTo("en");
+                assertThat(JsonValues.asLong(r.get("c0"))).isEqualTo(5L);       // COUNT(*)
+                assertThat(JsonValues.asLong(r.get("c1"))).isEqualTo(1299L);    // SUM(size_kb)
             }
         }
     }
@@ -116,7 +118,7 @@ class DistributedAggregateTest {
                     "SELECT lang, COUNT(*) FROM docs WHERE size_kb > 100 GROUP BY lang")) {
                 var rows = h.collect(5, TimeUnit.SECONDS);
                 Map<String, Long> byLang = new HashMap<>();
-                for (JsonNode r : rows) byLang.put(r.get("lang").asText(), r.get("c0").asLong());
+                for (JsonNode r : rows) byLang.put(JsonValues.asText(r.get("lang")), JsonValues.asLong(r.get("c0")));
                 // size_kb > 100: us-1(210), us-3(640), eu-1(512), eu-2(128), ap-1(190), ap-3(320)
                 //   en → 3 (us-1, us-3, ap-3), fr → 1 (eu-1), de → 1 (eu-2), ja → 1 (ap-1)
                 assertThat(byLang).containsExactlyInAnyOrderEntriesOf(Map.of(

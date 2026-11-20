@@ -3,8 +3,9 @@
  */
 package com.hitorro.mesh.examples;
 
-import com.fasterxml.jackson.databind.JsonNode;
-import com.fasterxml.jackson.databind.ObjectMapper;
+import tools.jackson.databind.JsonNode;
+import tools.jackson.databind.ObjectMapper;
+import com.hitorro.util.json.JsonMappers;
 import com.hitorro.jsontypesystem.JVS;
 import com.hitorro.jsontypesystem.Type;
 import com.hitorro.mesh.InMemoryMeshTransport;
@@ -25,6 +26,7 @@ import java.util.Set;
 import java.util.concurrent.TimeUnit;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import com.hitorro.util.json.JsonValues;
 
 /**
  * Phase 6c.2: cancel-through-to-agents.
@@ -36,7 +38,7 @@ import static org.assertj.core.api.Assertions.assertThat;
  */
 class StreamingCancelTest {
 
-    private static final ObjectMapper MAPPER = new ObjectMapper();
+    private static final ObjectMapper MAPPER = JsonMappers.json();
 
     @Test
     void closingHandle_cancelsAgentSideStream() throws Exception {
@@ -48,7 +50,7 @@ class StreamingCancelTest {
             c.usTable().pushRow(row("us-1", "us"));
             JsonNode first = h.nextRow(2, TimeUnit.SECONDS);
             assertThat(first).isNotNull();
-            assertThat(first.get("id").asText()).isEqualTo("us-1");
+            assertThat(JsonValues.asText(first.get("id"))).isEqualTo("us-1");
 
             // Close the handle — should propagate a CancelMessage that
             // interrupts the agent's scan iterator (currently blocked on
@@ -69,7 +71,7 @@ class StreamingCancelTest {
             c.usTable().pushRow(row("us-2", "us"));
             JsonNode next = h2.nextRow(2, TimeUnit.SECONDS);
             assertThat(next).isNotNull();
-            assertThat(next.get("id").asText()).isEqualTo("us-2");
+            assertThat(JsonValues.asText(next.get("id"))).isEqualTo("us-2");
             h2.close();
         }
     }

@@ -3,7 +3,7 @@
  */
 package com.hitorro.mesh.examples;
 
-import com.fasterxml.jackson.databind.JsonNode;
+import tools.jackson.databind.JsonNode;
 import com.hitorro.jsontypesystem.JVS;
 import com.hitorro.jsontypesystem.Type;
 import com.hitorro.mesh.InMemoryMeshTransport;
@@ -26,6 +26,7 @@ import java.util.Set;
 import java.util.concurrent.TimeUnit;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import com.hitorro.util.json.JsonValues;
 
 /**
  * Phase 3: AVG, SELECT DISTINCT, HAVING.
@@ -47,7 +48,7 @@ class Phase3AggregatesTest {
                 var rows = h.collect(5, TimeUnit.SECONDS);
                 assertThat(rows).hasSize(1);
                 // en size_kb values: 210, 84, 640, 45, 320 → sum=1299, count=5, avg=259.8
-                assertThat(rows.get(0).get("c0").asDouble()).isEqualTo(259.8);
+                assertThat(JsonValues.asDouble(rows.get(0).get("c0"))).isEqualTo(259.8);
             }
         }
     }
@@ -59,7 +60,7 @@ class Phase3AggregatesTest {
                     "SELECT lang, AVG(size_kb) FROM docs GROUP BY lang")) {
                 var rows = h.collect(5, TimeUnit.SECONDS);
                 Map<String, Double> avgs = new HashMap<>();
-                for (JsonNode r : rows) avgs.put(r.get("lang").asText(), r.get("c0").asDouble());
+                for (JsonNode r : rows) avgs.put(JsonValues.asText(r.get("lang")), JsonValues.asDouble(r.get("c0")));
                 assertThat(avgs).containsKeys("en", "fr", "de", "ja", "ko");
                 // fr: single value 512.0
                 assertThat(avgs.get("fr")).isEqualTo(512.0);
@@ -76,8 +77,8 @@ class Phase3AggregatesTest {
                     "SELECT lang, COUNT(*), AVG(size_kb) FROM docs WHERE lang = 'en' GROUP BY lang")) {
                 var rows = h.collect(5, TimeUnit.SECONDS);
                 assertThat(rows).hasSize(1);
-                assertThat(rows.get(0).get("c0").asLong()).isEqualTo(5L);
-                assertThat(rows.get(0).get("c1").asDouble()).isEqualTo(259.8);
+                assertThat(JsonValues.asLong(rows.get(0).get("c0"))).isEqualTo(5L);
+                assertThat(JsonValues.asDouble(rows.get(0).get("c1"))).isEqualTo(259.8);
             }
         }
     }
@@ -91,7 +92,7 @@ class Phase3AggregatesTest {
                     "SELECT DISTINCT lang FROM docs")) {
                 var rows = h.collect(5, TimeUnit.SECONDS);
                 List<String> langs = new ArrayList<>();
-                for (JsonNode r : rows) langs.add(r.get("lang").asText());
+                for (JsonNode r : rows) langs.add(JsonValues.asText(r.get("lang")));
                 assertThat(langs).containsExactlyInAnyOrder("en", "fr", "de", "ja", "ko");
                 // 9 documents but only 5 distinct langs — dedup worked
                 assertThat(langs).hasSize(5);
@@ -106,7 +107,7 @@ class Phase3AggregatesTest {
                     "SELECT DISTINCT lang FROM docs WHERE size_kb > 100")) {
                 var rows = h.collect(5, TimeUnit.SECONDS);
                 List<String> langs = new ArrayList<>();
-                for (JsonNode r : rows) langs.add(r.get("lang").asText());
+                for (JsonNode r : rows) langs.add(JsonValues.asText(r.get("lang")));
                 // size_kb > 100: us-1(en,210), us-3(en,640), eu-1(fr,512), eu-2(de,128),
                 //                ap-1(ja,190), ap-3(en,320) → distinct langs: en, fr, de, ja
                 assertThat(langs).containsExactlyInAnyOrder("en", "fr", "de", "ja");
@@ -123,7 +124,7 @@ class Phase3AggregatesTest {
                     "SELECT lang, COUNT(*) FROM docs GROUP BY lang HAVING COUNT(*) > 1")) {
                 var rows = h.collect(5, TimeUnit.SECONDS);
                 Map<String, Long> byLang = new HashMap<>();
-                for (JsonNode r : rows) byLang.put(r.get("lang").asText(), r.get("c0").asLong());
+                for (JsonNode r : rows) byLang.put(JsonValues.asText(r.get("lang")), JsonValues.asLong(r.get("c0")));
                 // Only "en" has more than one row (5); everyone else has exactly 1.
                 assertThat(byLang).containsExactlyInAnyOrderEntriesOf(Map.of("en", 5L));
             }
@@ -137,7 +138,7 @@ class Phase3AggregatesTest {
                     "SELECT lang, SUM(size_kb) FROM docs GROUP BY lang HAVING SUM(size_kb) > 300")) {
                 var rows = h.collect(5, TimeUnit.SECONDS);
                 Map<String, Long> sums = new HashMap<>();
-                for (JsonNode r : rows) sums.put(r.get("lang").asText(), r.get("c0").asLong());
+                for (JsonNode r : rows) sums.put(JsonValues.asText(r.get("lang")), JsonValues.asLong(r.get("c0")));
                 // en=1299, fr=512, de=128, ja=190, ko=55  → groups with sum>300: en, fr
                 assertThat(sums).containsExactlyInAnyOrderEntriesOf(Map.of(
                         "en", 1299L, "fr", 512L));

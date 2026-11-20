@@ -3,8 +3,9 @@
  */
 package com.hitorro.mesh.examples;
 
-import com.fasterxml.jackson.databind.JsonNode;
-import com.fasterxml.jackson.databind.ObjectMapper;
+import tools.jackson.databind.JsonNode;
+import tools.jackson.databind.ObjectMapper;
+import com.hitorro.util.json.JsonMappers;
 import com.hitorro.jsontypesystem.JVS;
 import com.hitorro.jsontypesystem.Type;
 import com.hitorro.mesh.InMemoryMeshTransport;
@@ -28,6 +29,7 @@ import java.util.Set;
 import java.util.concurrent.TimeUnit;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import com.hitorro.util.json.JsonValues;
 
 /**
  * Phase 2.5.1: distributed combiner correctness.
@@ -40,7 +42,7 @@ import static org.assertj.core.api.Assertions.assertThat;
  */
 class DistributedShuffleTest {
 
-    private static final ObjectMapper MAPPER = new ObjectMapper();
+    private static final ObjectMapper MAPPER = JsonMappers.json();
 
     @Test
     void countByGroup_shuffleWidth2_correctGlobalCounts() throws Exception {
@@ -49,7 +51,7 @@ class DistributedShuffleTest {
                     "SELECT lang, COUNT(*) FROM docs GROUP BY lang")) {
                 var rows = h.collect(15, TimeUnit.SECONDS);
                 Map<String, Long> byLang = new HashMap<>();
-                for (JsonNode r : rows) byLang.put(r.get("lang").asText(), r.get("c0").asLong());
+                for (JsonNode r : rows) byLang.put(JsonValues.asText(r.get("lang")), JsonValues.asLong(r.get("c0")));
                 // Same expected result as the phase-2 combiner-at-driver test.
                 assertThat(byLang).containsExactlyInAnyOrderEntriesOf(Map.of(
                         "en", 5L, "fr", 1L, "de", 1L, "ja", 1L, "ko", 1L));
@@ -64,7 +66,7 @@ class DistributedShuffleTest {
                     "SELECT lang, SUM(size_kb) FROM docs WHERE lang = 'en' GROUP BY lang")) {
                 var rows = h.collect(15, TimeUnit.SECONDS);
                 assertThat(rows).hasSize(1);
-                assertThat(rows.get(0).get("c0").asLong()).isEqualTo(1299L);
+                assertThat(JsonValues.asLong(rows.get(0).get("c0"))).isEqualTo(1299L);
             }
         }
     }
@@ -77,8 +79,8 @@ class DistributedShuffleTest {
                 var rows = h.collect(15, TimeUnit.SECONDS);
                 Map<String, long[]> byLang = new HashMap<>();
                 for (JsonNode r : rows) {
-                    byLang.put(r.get("lang").asText(),
-                            new long[]{ r.get("c0").asLong(), r.get("c1").asLong() });
+                    byLang.put(JsonValues.asText(r.get("lang")),
+                            new long[]{ JsonValues.asLong(r.get("c0")), JsonValues.asLong(r.get("c1")) });
                 }
                 assertThat(byLang.get("en")).containsExactly(45L, 640L);
                 assertThat(byLang.get("fr")).containsExactly(512L, 512L);
@@ -94,9 +96,9 @@ class DistributedShuffleTest {
                 var rows = h.collect(15, TimeUnit.SECONDS);
                 assertThat(rows).hasSize(1);
                 var r = rows.get(0);
-                assertThat(r.get("lang").asText()).isEqualTo("en");
-                assertThat(r.get("c0").asLong()).isEqualTo(5L);
-                assertThat(r.get("c1").asLong()).isEqualTo(1299L);
+                assertThat(JsonValues.asText(r.get("lang"))).isEqualTo("en");
+                assertThat(JsonValues.asLong(r.get("c0"))).isEqualTo(5L);
+                assertThat(JsonValues.asLong(r.get("c1"))).isEqualTo(1299L);
             }
         }
     }

@@ -3,8 +3,9 @@
  */
 package com.hitorro.mesh.examples;
 
-import com.fasterxml.jackson.databind.JsonNode;
-import com.fasterxml.jackson.databind.ObjectMapper;
+import tools.jackson.databind.JsonNode;
+import tools.jackson.databind.ObjectMapper;
+import com.hitorro.util.json.JsonMappers;
 import com.hitorro.jsontypesystem.JVS;
 import com.hitorro.jsontypesystem.Type;
 import com.hitorro.mesh.InMemoryMeshTransport;
@@ -27,6 +28,7 @@ import java.util.Set;
 import java.util.concurrent.TimeUnit;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import com.hitorro.util.json.JsonValues;
 
 /**
  * Phase 4b: shuffle-hash JOIN between two distributed tables.
@@ -38,7 +40,7 @@ import static org.assertj.core.api.Assertions.assertThat;
  */
 class ShuffleJoinTest {
 
-    private static final ObjectMapper MAPPER = new ObjectMapper();
+    private static final ObjectMapper MAPPER = JsonMappers.json();
 
     @Test
     void innerJoin_twoDistributedTables_returnsMatchingPairs() throws Exception {
@@ -53,8 +55,8 @@ class ShuffleJoinTest {
                 // Spot-check the join preserved the associations.
                 Map<String, String> idToAction = new HashMap<>();
                 for (JsonNode r : rows) {
-                    idToAction.put(r.get("id").asText() + ":" + r.get("action").asText(),
-                            r.get("title").asText());
+                    idToAction.put(JsonValues.asText(r.get("id")) + ":" + JsonValues.asText(r.get("action")),
+                            JsonValues.asText(r.get("title")));
                 }
                 assertThat(idToAction).containsKey("us-1:view");
                 assertThat(idToAction).containsKey("eu-1:download");
@@ -90,7 +92,7 @@ class ShuffleJoinTest {
                 // us-1 has 3 events (view, download, share); eu-1 has 1 (download);
                 // eu-2 has 1 (view). Only 2 rows have action='view'.
                 assertThat(rows).hasSize(2);
-                assertThat(rows).extracting(r -> r.get("id").asText())
+                assertThat(rows).extracting(r -> JsonValues.asText(r.get("id")))
                         .containsExactlyInAnyOrder("us-1", "eu-2");
             }
         }
@@ -109,8 +111,8 @@ class ShuffleJoinTest {
                 var rows = h.collect(15, TimeUnit.SECONDS);
                 // Only us-1 has title='Quarterly Report' AND one of its events is 'download'
                 assertThat(rows).hasSize(1);
-                assertThat(rows.get(0).get("id").asText()).isEqualTo("us-1");
-                assertThat(rows.get(0).get("action").asText()).isEqualTo("download");
+                assertThat(JsonValues.asText(rows.get(0).get("id"))).isEqualTo("us-1");
+                assertThat(JsonValues.asText(rows.get(0).get("action"))).isEqualTo("download");
             }
         }
     }
@@ -130,7 +132,7 @@ class ShuffleJoinTest {
                 // WHERE events.action='view' drops null-padded rows too.
                 // Only us-1 (view) and eu-2 (view) survive.
                 assertThat(rows).hasSize(2);
-                assertThat(rows).extracting(r -> r.get("id").asText())
+                assertThat(rows).extracting(r -> JsonValues.asText(r.get("id")))
                         .containsExactlyInAnyOrder("us-1", "eu-2");
             }
         }
@@ -151,7 +153,7 @@ class ShuffleJoinTest {
                 var rows = h.collect(15, TimeUnit.SECONDS);
                 assertThat(rows).hasSize(3);
                 Map<String, Long> byId = new HashMap<>();
-                for (JsonNode r : rows) byId.put(r.get("id").asText(), r.get("c0").asLong());
+                for (JsonNode r : rows) byId.put(JsonValues.asText(r.get("id")), JsonValues.asLong(r.get("c0")));
                 assertThat(byId).containsExactlyInAnyOrderEntriesOf(Map.of(
                         "us-1", 3L, "eu-1", 1L, "eu-2", 1L));
             }
@@ -172,7 +174,7 @@ class ShuffleJoinTest {
                 // us-1: view, download, share; eu-1: download; eu-2: view
                 // → download=2, view=2, share=1
                 Map<String, Long> byAction = new HashMap<>();
-                for (JsonNode r : rows) byAction.put(r.get("action").asText(), r.get("c0").asLong());
+                for (JsonNode r : rows) byAction.put(JsonValues.asText(r.get("action")), JsonValues.asLong(r.get("c0")));
                 assertThat(byAction).containsExactlyInAnyOrderEntriesOf(Map.of(
                         "download", 2L, "view", 2L, "share", 1L));
             }
@@ -192,7 +194,7 @@ class ShuffleJoinTest {
                 var rows = h.collect(15, TimeUnit.SECONDS);
                 assertThat(rows).hasSize(3);
                 Map<String, Long> byId = new HashMap<>();
-                for (JsonNode r : rows) byId.put(r.get("id").asText(), r.get("c0").asLong());
+                for (JsonNode r : rows) byId.put(JsonValues.asText(r.get("id")), JsonValues.asLong(r.get("c0")));
                 assertThat(byId).containsExactlyInAnyOrderEntriesOf(Map.of(
                         "us-1", 3L, "eu-1", 1L, "eu-2", 1L));
             }
@@ -212,7 +214,7 @@ class ShuffleJoinTest {
                     "GROUP BY docs.id")) {
                 var rows = h.collect(15, TimeUnit.SECONDS);
                 Map<String, Long> byId = new HashMap<>();
-                for (JsonNode r : rows) byId.put(r.get("id").asText(), r.get("c0").asLong());
+                for (JsonNode r : rows) byId.put(JsonValues.asText(r.get("id")), JsonValues.asLong(r.get("c0")));
                 assertThat(byId).containsExactlyInAnyOrderEntriesOf(Map.of(
                         "us-1", 2L, "eu-1", 1L, "eu-2", 1L));
             }
@@ -230,7 +232,7 @@ class ShuffleJoinTest {
                     "JOIN events ON docs.id = events.doc_id")) {
                 var rows = h.collect(15, TimeUnit.SECONDS);
                 assertThat(rows).hasSize(1);
-                assertThat(rows.get(0).get("c0").asLong()).isEqualTo(5L);
+                assertThat(JsonValues.asLong(rows.get(0).get("c0"))).isEqualTo(5L);
             }
         }
     }
@@ -245,7 +247,7 @@ class ShuffleJoinTest {
                     "JOIN events ON docs.id = events.doc_id")) {
                 var rows = h.collect(15, TimeUnit.SECONDS);
                 assertThat(rows).hasSize(1);
-                assertThat(rows.get(0).get("c0").asLong()).isEqualTo(5L);
+                assertThat(JsonValues.asLong(rows.get(0).get("c0"))).isEqualTo(5L);
             }
         }
     }
@@ -261,7 +263,7 @@ class ShuffleJoinTest {
                     "JOIN events ON docs.id = events.doc_id")) {
                 var rows = h.collect(15, TimeUnit.SECONDS);
                 Map<String, Long> byDoc = new HashMap<>();
-                for (JsonNode r : rows) byDoc.merge(r.get("id").asText(), 1L, Long::sum);
+                for (JsonNode r : rows) byDoc.merge(JsonValues.asText(r.get("id")), 1L, Long::sum);
                 assertThat(byDoc).containsExactlyInAnyOrderEntriesOf(Map.of(
                         "us-1", 3L, "eu-1", 1L, "eu-2", 1L));
             }
