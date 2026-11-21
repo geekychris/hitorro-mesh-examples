@@ -3,8 +3,9 @@
  */
 package com.hitorro.mesh.examples;
 
-import com.fasterxml.jackson.databind.JsonNode;
-import com.fasterxml.jackson.databind.ObjectMapper;
+import tools.jackson.databind.JsonNode;
+import tools.jackson.databind.ObjectMapper;
+import com.hitorro.util.json.JsonMappers;
 import com.hitorro.jsontypesystem.JVS;
 import com.hitorro.jsontypesystem.Type;
 import com.hitorro.mesh.InMemoryMeshTransport;
@@ -27,6 +28,7 @@ import java.util.Set;
 import java.util.concurrent.TimeUnit;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import com.hitorro.util.json.JsonValues;
 
 /**
  * Phase 4c: OUTER JOIN against a broadcast table.
@@ -43,7 +45,7 @@ import static org.assertj.core.api.Assertions.assertThat;
  */
 class OuterJoinTest {
 
-    private static final ObjectMapper MAPPER = new ObjectMapper();
+    private static final ObjectMapper MAPPER = JsonMappers.json();
 
     @Test
     void leftJoin_preservesUnmatchedLeftRows_withNullRightSide() throws Exception {
@@ -59,9 +61,9 @@ class OuterJoinTest {
                 //   eu-2 (lang=zz, unmatched)
                 assertThat(rows).hasSize(4);
                 Map<String, JsonNode> byId = new HashMap<>();
-                for (JsonNode r : rows) byId.put(r.get("id").asText(), r);
-                assertThat(byId.get("us-1").get("name").asText()).isEqualTo("English");
-                assertThat(byId.get("eu-1").get("name").asText()).isEqualTo("French");
+                for (JsonNode r : rows) byId.put(JsonValues.asText(r.get("id")), r);
+                assertThat(JsonValues.asText(byId.get("us-1").get("name"))).isEqualTo("English");
+                assertThat(JsonValues.asText(byId.get("eu-1").get("name"))).isEqualTo("French");
                 // Unmatched rows: name is null or missing
                 JsonNode us2Name = byId.get("us-2").get("name");
                 assertThat(us2Name == null || us2Name.isNull())
@@ -81,7 +83,7 @@ class OuterJoinTest {
                     "JOIN langs ON docs.lang = langs.code")) {
                 var rows = h.collect(5, TimeUnit.SECONDS);
                 // Sanity check: baseline INNER JOIN drops the 2 unmatched rows.
-                assertThat(rows).extracting(r -> r.get("id").asText())
+                assertThat(rows).extracting(r -> JsonValues.asText(r.get("id")))
                         .containsExactlyInAnyOrder("us-1", "eu-1");
             }
         }
@@ -103,7 +105,7 @@ class OuterJoinTest {
                 // eu partition: en→null, fr→eu-1, de→null = 3 rows
                 assertThat(rows).hasSize(6);
                 long dePairs = rows.stream()
-                        .filter(r -> "de".equals(r.get("code").asText()))
+                        .filter(r -> "de".equals(JsonValues.asText(r.get("code"))))
                         .count();
                 assertThat(dePairs).as("de appears once per partition (broadcast joined locally)").isEqualTo(2);
                 long unmatched = rows.stream()
@@ -156,7 +158,7 @@ class OuterJoinTest {
                     "GROUP BY docs.lang")) {
                 var rows = h.collect(5, TimeUnit.SECONDS);
                 Map<String, Long> byLang = new HashMap<>();
-                for (JsonNode r : rows) byLang.put(r.get("lang").asText(), r.get("c0").asLong());
+                for (JsonNode r : rows) byLang.put(JsonValues.asText(r.get("lang")), JsonValues.asLong(r.get("c0")));
                 // All 4 docs counted, one per lang (each lang has 1 doc):
                 assertThat(byLang).containsExactlyInAnyOrderEntriesOf(Map.of(
                         "en", 1L, "xx", 1L, "fr", 1L, "zz", 1L));

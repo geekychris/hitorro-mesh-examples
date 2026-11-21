@@ -3,8 +3,9 @@
  */
 package com.hitorro.mesh.examples;
 
-import com.fasterxml.jackson.databind.JsonNode;
-import com.fasterxml.jackson.databind.ObjectMapper;
+import tools.jackson.databind.JsonNode;
+import tools.jackson.databind.ObjectMapper;
+import com.hitorro.util.json.JsonMappers;
 import com.hitorro.jsontypesystem.JVS;
 import com.hitorro.jsontypesystem.Type;
 import com.hitorro.mesh.InMemoryMeshTransport;
@@ -26,6 +27,7 @@ import java.util.Set;
 import java.util.concurrent.TimeUnit;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import com.hitorro.util.json.JsonValues;
 
 /**
  * Phase 6a: streaming source.
@@ -38,7 +40,7 @@ import static org.assertj.core.api.Assertions.assertThat;
  */
 class StreamingScanTest {
 
-    private static final ObjectMapper MAPPER = new ObjectMapper();
+    private static final ObjectMapper MAPPER = JsonMappers.json();
 
     @Test
     void streamingScan_yieldsRowsAsTheyArrive() throws Exception {
@@ -61,14 +63,14 @@ class StreamingScanTest {
                     assertThat(r).isNotNull();
                     collected.add(r);
                 }
-                assertThat(collected).extracting(r -> r.get("id").asText())
+                assertThat(collected).extracting(r -> JsonValues.asText(r.get("id")))
                         .containsExactlyInAnyOrder("us-1", "eu-1", "us-2");
 
                 // Push one more, verify it arrives.
                 c.euTable().pushRow(row("eu-2", "eu"));
                 JsonNode fourth = h.nextRow(2, TimeUnit.SECONDS);
                 assertThat(fourth).isNotNull();
-                assertThat(fourth.get("id").asText()).isEqualTo("eu-2");
+                assertThat(JsonValues.asText(fourth.get("id"))).isEqualTo("eu-2");
 
                 // Terminate the streams — driver's iterator should end.
                 c.usTable().stop();
@@ -94,7 +96,7 @@ class StreamingScanTest {
                     JsonNode r = h.nextRow(2, TimeUnit.SECONDS);
                     collected.add(r);
                 }
-                assertThat(collected).extracting(r -> r.get("id").asText())
+                assertThat(collected).extracting(r -> JsonValues.asText(r.get("id")))
                         .containsExactlyInAnyOrder("us-a", "us-b");
 
                 c.usTable().stop();

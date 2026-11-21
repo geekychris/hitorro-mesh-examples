@@ -3,8 +3,9 @@
  */
 package com.hitorro.mesh.examples;
 
-import com.fasterxml.jackson.databind.JsonNode;
-import com.fasterxml.jackson.databind.ObjectMapper;
+import tools.jackson.databind.JsonNode;
+import tools.jackson.databind.ObjectMapper;
+import com.hitorro.util.json.JsonMappers;
 import com.hitorro.jsontypesystem.JVS;
 import com.hitorro.jsontypesystem.Type;
 import com.hitorro.mesh.InMemoryMeshTransport;
@@ -27,6 +28,7 @@ import java.util.Set;
 import java.util.concurrent.TimeUnit;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import com.hitorro.util.json.JsonValues;
 
 /**
  * Phase 4a: broadcast JOIN.
@@ -40,7 +42,7 @@ import static org.assertj.core.api.Assertions.assertThat;
  */
 class BroadcastJoinTest {
 
-    private static final ObjectMapper MAPPER = new ObjectMapper();
+    private static final ObjectMapper MAPPER = JsonMappers.json();
 
     @Test
     void joinToBroadcastTable_enrichesRowsAcrossPartitions() throws Exception {
@@ -53,7 +55,7 @@ class BroadcastJoinTest {
                 assertThat(rows).hasSize(9);
                 // Spot-check a couple of the joins.
                 Map<String, String> idToName = new HashMap<>();
-                for (JsonNode r : rows) idToName.put(r.get("id").asText(), r.get("name").asText());
+                for (JsonNode r : rows) idToName.put(JsonValues.asText(r.get("id")), JsonValues.asText(r.get("name")));
                 assertThat(idToName).containsEntry("us-1", "English");
                 assertThat(idToName).containsEntry("eu-1", "French");
                 assertThat(idToName).containsEntry("ap-1", "Japanese");
@@ -72,7 +74,7 @@ class BroadcastJoinTest {
                 // size_kb > 200: us-1(210), us-3(640), eu-1(512), ap-1(190→no), ap-3(320)
                 // Wait — ap-1 has 190, which is NOT > 200. So we should get us-1, us-3, eu-1, ap-3.
                 assertThat(rows).hasSize(4);
-                List<String> ids = rows.stream().map(r -> r.get("id").asText()).sorted().toList();
+                List<String> ids = rows.stream().map(r -> JsonValues.asText(r.get("id"))).sorted().toList();
                 assertThat(ids).containsExactly("ap-3", "eu-1", "us-1", "us-3");
             }
         }
@@ -88,7 +90,7 @@ class BroadcastJoinTest {
                     "GROUP BY langs.name")) {
                 var rows = h.collect(5, TimeUnit.SECONDS);
                 Map<String, Long> byName = new HashMap<>();
-                for (JsonNode r : rows) byName.put(r.get("name").asText(), r.get("c0").asLong());
+                for (JsonNode r : rows) byName.put(JsonValues.asText(r.get("name")), JsonValues.asLong(r.get("c0")));
                 assertThat(byName).containsExactlyInAnyOrderEntriesOf(Map.of(
                         "English", 5L, "French", 1L, "German", 1L,
                         "Japanese", 1L, "Korean", 1L));
@@ -105,7 +107,7 @@ class BroadcastJoinTest {
                     "GROUP BY langs.name")) {
                 var rows = h.collect(10, TimeUnit.SECONDS);
                 Map<String, Long> byName = new HashMap<>();
-                for (JsonNode r : rows) byName.put(r.get("name").asText(), r.get("c0").asLong());
+                for (JsonNode r : rows) byName.put(JsonValues.asText(r.get("name")), JsonValues.asLong(r.get("c0")));
                 assertThat(byName).containsExactlyInAnyOrderEntriesOf(Map.of(
                         "English", 5L, "French", 1L, "German", 1L,
                         "Japanese", 1L, "Korean", 1L));

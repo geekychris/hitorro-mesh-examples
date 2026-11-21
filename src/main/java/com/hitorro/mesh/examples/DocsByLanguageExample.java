@@ -3,7 +3,8 @@
  */
 package com.hitorro.mesh.examples;
 
-import com.fasterxml.jackson.databind.ObjectMapper;
+import tools.jackson.databind.ObjectMapper;
+import com.hitorro.util.json.JsonMappers;
 import com.hitorro.jsontypesystem.JVS;
 import com.hitorro.jsontypesystem.Type;
 
@@ -21,7 +22,7 @@ import java.util.Map;
  */
 public final class DocsByLanguageExample implements HitorroMeshExample {
 
-    private static final ObjectMapper MAPPER = new ObjectMapper();
+    private static final ObjectMapper MAPPER = JsonMappers.json();
 
     public static void main(String[] args) throws Exception {
         ExampleClusterRunner.run(new DocsByLanguageExample());

@@ -3,8 +3,9 @@
  */
 package com.hitorro.mesh.examples;
 
-import com.fasterxml.jackson.databind.JsonNode;
-import com.fasterxml.jackson.databind.ObjectMapper;
+import tools.jackson.databind.JsonNode;
+import tools.jackson.databind.ObjectMapper;
+import com.hitorro.util.json.JsonMappers;
 import com.hitorro.jsontypesystem.JVS;
 import com.hitorro.jsontypesystem.Type;
 import com.hitorro.mesh.InMemoryMeshTransport;
@@ -26,6 +27,7 @@ import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.TimeUnit;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import com.hitorro.util.json.JsonValues;
 
 /**
  * Phase 5b.3 — verify LIMIT (with and without ORDER BY) is pushed to agents,
@@ -37,7 +39,7 @@ import static org.assertj.core.api.Assertions.assertThat;
  */
 class LimitPushdownTest {
 
-    private static final ObjectMapper MAPPER = new ObjectMapper();
+    private static final ObjectMapper MAPPER = JsonMappers.json();
 
     @Test
     void limitWithoutOrderBy_capsPerPartitionScan() throws Exception {
@@ -64,7 +66,7 @@ class LimitPushdownTest {
                 assertThat(rows).hasSize(3);
                 // us has vals 1..50, eu has 51..100. Global top-3: 100, 99, 98.
                 List<Long> gotVals = new ArrayList<>();
-                for (JsonNode r : rows) gotVals.add(r.get("val").asLong());
+                for (JsonNode r : rows) gotVals.add(JsonValues.asLong(r.get("val")));
                 assertThat(gotVals).containsExactly(100L, 99L, 98L);
                 // Correctness only — the scan-count check doesn't apply for
                 // ORDER BY because jvssql's SORT operator has to see every row

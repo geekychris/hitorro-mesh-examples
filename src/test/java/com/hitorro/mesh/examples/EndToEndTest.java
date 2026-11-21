@@ -3,7 +3,7 @@
  */
 package com.hitorro.mesh.examples;
 
-import com.fasterxml.jackson.databind.JsonNode;
+import tools.jackson.databind.JsonNode;
 import com.hitorro.mesh.InMemoryMeshTransport;
 import com.hitorro.mesh.MeshTransport;
 import com.hitorro.mesh.agent.AgentConfig;
@@ -15,7 +15,8 @@ import com.hitorro.mesh.driver.MeshDriver;
 import com.hitorro.mesh.driver.QueryDispatcher;
 import com.hitorro.jsontypesystem.JVS;
 import com.hitorro.jsontypesystem.Type;
-import com.fasterxml.jackson.databind.ObjectMapper;
+import tools.jackson.databind.ObjectMapper;
+import com.hitorro.util.json.JsonMappers;
 import org.junit.jupiter.api.Test;
 
 import java.time.Duration;
@@ -27,6 +28,7 @@ import java.util.concurrent.TimeUnit;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import com.hitorro.util.json.JsonValues;
 
 /**
  * End-to-end smoke test for phase 1: an in-JVM cluster with 3 agents each
@@ -38,7 +40,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
  */
 class EndToEndTest {
 
-    private static final ObjectMapper MAPPER = new ObjectMapper();
+    private static final ObjectMapper MAPPER = JsonMappers.json();
 
     @Test
     void distributedFilter_unionsAcrossPartitions() throws Exception {
@@ -47,7 +49,7 @@ class EndToEndTest {
             try (QueryDispatcher.QueryHandle h = cluster.driver().dispatcher().submit(
                     "SELECT id FROM docs WHERE lang = 'en'")) {
                 List<JsonNode> rows = h.collect(5, TimeUnit.SECONDS);
-                List<String> ids = rows.stream().map(r -> r.get("id").asText()).sorted().toList();
+                List<String> ids = rows.stream().map(r -> JsonValues.asText(r.get("id"))).sorted().toList();
                 // English docs from all three partitions
                 assertThat(ids).containsExactlyInAnyOrder("us-1", "us-2", "us-3", "eu-3", "ap-3");
             }
@@ -61,11 +63,11 @@ class EndToEndTest {
                     "SELECT id, title, size_kb FROM docs WHERE size_kb > 200")) {
                 List<JsonNode> rows = h.collect(5, TimeUnit.SECONDS);
                 assertThat(rows).allSatisfy(r -> {
-                    assertThat(r.get("id").isTextual()).isTrue();
-                    assertThat(r.get("title").isTextual()).isTrue();
-                    assertThat(r.get("size_kb").asLong()).isGreaterThan(200);
+                    assertThat(r.get("id").isString()).isTrue();
+                    assertThat(r.get("title").isString()).isTrue();
+                    assertThat(JsonValues.asLong(r.get("size_kb"))).isGreaterThan(200);
                 });
-                assertThat(rows.stream().map(r -> r.get("id").asText()).sorted().toList())
+                assertThat(rows.stream().map(r -> JsonValues.asText(r.get("id"))).sorted().toList())
                         .containsExactly("ap-3", "eu-1", "us-1", "us-3");
             }
         }

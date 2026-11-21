@@ -3,8 +3,9 @@
  */
 package com.hitorro.mesh.examples;
 
-import com.fasterxml.jackson.databind.JsonNode;
-import com.fasterxml.jackson.databind.ObjectMapper;
+import tools.jackson.databind.JsonNode;
+import tools.jackson.databind.ObjectMapper;
+import com.hitorro.util.json.JsonMappers;
 import com.hitorro.jsontypesystem.JVS;
 import com.hitorro.jsontypesystem.Type;
 import com.hitorro.mesh.InMemoryMeshTransport;
@@ -27,6 +28,7 @@ import java.util.Set;
 import java.util.concurrent.TimeUnit;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import com.hitorro.util.json.JsonValues;
 
 /**
  * Phase 4c.1: shuffle-hash OUTER JOIN between two distributed tables.
@@ -49,7 +51,7 @@ import static org.assertj.core.api.Assertions.assertThat;
  */
 class ShuffleOuterJoinTest {
 
-    private static final ObjectMapper MAPPER = new ObjectMapper();
+    private static final ObjectMapper MAPPER = JsonMappers.json();
 
     @Test
     void leftOuterJoin_preservesUnmatchedLeftRows() throws Exception {
@@ -138,9 +140,9 @@ class ShuffleOuterJoinTest {
     private static Map<String, List<String>> groupActionsById(List<JsonNode> rows) {
         Map<String, List<String>> out = new HashMap<>();
         for (JsonNode r : rows) {
-            String id = r.get("id").asText();
+            String id = JsonValues.asText(r.get("id"));
             JsonNode actionNode = r.get("action");
-            String action = (actionNode == null || actionNode.isNull()) ? null : actionNode.asText();
+            String action = (actionNode == null || actionNode.isNull()) ? null : JsonValues.asText(actionNode);
             out.computeIfAbsent(id, k -> new ArrayList<>()).add(action);
         }
         return out;

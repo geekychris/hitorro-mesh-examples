@@ -3,7 +3,7 @@
  */
 package com.hitorro.mesh.examples;
 
-import com.fasterxml.jackson.databind.JsonNode;
+import tools.jackson.databind.JsonNode;
 import com.hitorro.jsontypesystem.JVS;
 import com.hitorro.jsontypesystem.Type;
 import com.hitorro.mesh.InMemoryMeshTransport;
@@ -24,6 +24,7 @@ import java.util.Set;
 import java.util.concurrent.TimeUnit;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import com.hitorro.util.json.JsonValues;
 
 /**
  * Phase 5a: driver-side LIMIT.
@@ -91,8 +92,8 @@ class LimitTest {
                 assertThat(rows).hasSize(2);
                 // Each returned row should still be a proper aggregate.
                 for (JsonNode r : rows) {
-                    assertThat(r.get("lang").isTextual()).isTrue();
-                    assertThat(r.get("c0").asLong()).isGreaterThan(0);
+                    assertThat(r.get("lang").isString()).isTrue();
+                    assertThat(JsonValues.asLong(r.get("c0"))).isGreaterThan(0);
                 }
             }
         }
